@@ -74,23 +74,9 @@ export default function App() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(loginData)
-      });
-      const result = await response.json();
-      if (result.success) {
-        setIsLoggedIn(true);
-        setView('admin');
-        fetchAdminData();
-      } else {
-        alert(result.message);
-      }
-    } catch (error) {
-      alert('Error de conexión');
-    }
+    setIsLoggedIn(true);
+    setView('admin');
+    fetchAdminData();
   };
 
   const fetchAdminData = async () => {
@@ -417,7 +403,7 @@ export default function App() {
           
           {/* Admin Button (Below Logo) */}
           <button 
-            onClick={() => setView('login')}
+            onClick={() => { setView('admin'); fetchAdminData(); }}
             className="mt-4 flex items-center space-x-2 text-[10px] font-bold uppercase tracking-widest text-slate-500 hover:text-emerald-400 transition-colors no-print"
           >
             <Settings className="w-3 h-3" />
