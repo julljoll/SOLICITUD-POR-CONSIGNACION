@@ -54,7 +54,7 @@ export default function App() {
   const getInputClass = (name: keyof typeof formData) => {
     if (typeof formData[name] === 'boolean') return '';
     const isDefault = formData[name] === DEFAULT_VALUES[name as keyof typeof DEFAULT_VALUES];
-    return `${isDefault ? 'text-red-500 border-red-500/30' : 'text-emerald-400 border-emerald-500/30'}`;
+    return `${isDefault ? 'text-slate-500 border-slate-600 italic' : 'text-emerald-400 border-emerald-500/30'}`;
   };
 
   useEffect(() => {
@@ -127,9 +127,23 @@ export default function App() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoggedIn(true);
-    setView('admin');
-    fetchAdminData();
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(loginData)
+      });
+      const result = await res.json();
+      if (result.success) {
+        setIsLoggedIn(true);
+        setView('admin');
+        fetchAdminData();
+      } else {
+        alert('Credenciales inválidas. Verifique usuario y contraseña.');
+      }
+    } catch {
+      alert('Error de conexión con el servidor.');
+    }
   };
 
   const fetchAdminData = async () => {
@@ -584,7 +598,7 @@ export default function App() {
           
           {/* Admin Button (Below Logo) */}
           <button 
-            onClick={() => { setView('admin'); fetchAdminData(); }}
+            onClick={() => setView('login')}
             className="mt-4 flex items-center space-x-2 text-[10px] font-bold uppercase tracking-widest text-slate-500 hover:text-emerald-400 transition-colors no-print"
           >
             <Settings className="w-3 h-3" />
@@ -607,7 +621,7 @@ export default function App() {
               <div>
                 <label className="label-text">Cédula / Identificación</label>
                 <div className="flex space-x-1">
-                  <select name="cedulaPrefix" value={formData.cedulaPrefix} onChange={handleInputChange} className={`input-field w-12 px-1 text-center font-bold ${getInputClass('cedulaPrefix')}`}>
+                  <select name="cedulaPrefix" value={formData.cedulaPrefix} onChange={handleInputChange} className={`input-field w-16 shrink-0 px-1 text-center font-bold ${getInputClass('cedulaPrefix')}`}>
                     <option value="V">V</option>
                     <option value="E">E</option>
                     <option value="J">J</option>
@@ -624,7 +638,7 @@ export default function App() {
               <div>
                 <label className="label-text">Teléfono</label>
                 <div className="flex space-x-1">
-                  <select name="telefonoCarrier" value={formData.telefonoCarrier} onChange={handleInputChange} className={`input-field w-20 px-1 text-center font-bold ${getInputClass('telefonoCarrier')}`}>
+                  <select name="telefonoCarrier" value={formData.telefonoCarrier} onChange={handleInputChange} className={`input-field w-22 shrink-0 px-1 text-center font-bold ${getInputClass('telefonoCarrier')}`}>
                     <option value="0414">0414</option>
                     <option value="0424">0424</option>
                     <option value="0412">0412</option>
