@@ -1,15 +1,17 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import Database from "better-sqlite3";
+import pg from "pg";
 import path from "path";
 import { fileURLToPath } from "url";
 
+const { Pool } = pg;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const db = new Database("forensic.db");
 
-// Initialize Database
+// Initialize SQLite Database
 db.exec(`
   CREATE TABLE IF NOT EXISTS forms (
     id TEXT PRIMARY KEY,
@@ -49,6 +51,61 @@ db.exec(`
   INSERT OR IGNORE INTO users (username, password) VALUES ('julljoll', '15816003');
 `);
 
+// Postgres Pool for Neon
+let pgPool: pg.Pool | null = null;
+
+const getPgPool = async () => {
+  if (pgPool) return pgPool;
+  
+  const setting = db.prepare("SELECT value FROM settings WHERE key = 'neo_config'").get();
+  const config = setting ? JSON.parse(setting.value as string) : null;
+  const connectionString = process.env.DATABASE_URL || config?.apiKey;
+
+  if (connectionString) {
+    pgPool = new Pool({
+      connectionString,
+      ssl: { rejectUnauthorized: false }
+    });
+    
+    // Initialize Postgres Schema
+    try {
+      const client = await pgPool.connect();
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS forms (
+          id TEXT PRIMARY KEY,
+          nombre TEXT,
+          cedula TEXT,
+          ciudad TEXT,
+          telefono TEXT,
+          direccion TEXT,
+          marca TEXT,
+          modelo TEXT,
+          color TEXT,
+          serial TEXT,
+          imei1 TEXT,
+          imei2 TEXT,
+          numTelefónico TEXT,
+          codigoDesbloqueo TEXT,
+          estadoFisico TEXT,
+          aplicacionObjeto TEXT,
+          contactoEspecifico TEXT,
+          fechaDesde TEXT,
+          fechaHasta TEXT,
+          aislamiento INTEGER,
+          calculoHash INTEGER,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      client.release();
+      console.log("Connected to Neon Postgres");
+    } catch (err) {
+      console.error("Failed to connect to Neon Postgres:", err);
+      pgPool = null;
+    }
+  }
+  return pgPool;
+};
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
@@ -66,15 +123,25 @@ async function startServer() {
     }
   });
 
-  app.get("/api/forms", (req, res) => {
+  app.get("/api/forms", async (req, res) => {
+    const pool = await getPgPool();
+    if (pool) {
+      try {
+        const result = await pool.query("SELECT * FROM forms ORDER BY created_at DESC");
+        return res.json(result.rows);
+      } catch (err) {
+        console.error("Postgres fetch error:", err);
+      }
+    }
     const forms = db.prepare("SELECT * FROM forms ORDER BY created_at DESC").all();
     res.json(forms);
   });
 
-  app.post("/api/forms", (req, res) => {
+  app.post("/api/forms", async (req, res) => {
     const form = req.body;
     const id = `SHA-${new Date().getFullYear()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
     
+    // Save to SQLite (Local Cache)
     const stmt = db.prepare(`
       INSERT INTO forms (
         id, nombre, cedula, ciudad, telefono, direccion, 
@@ -93,18 +160,44 @@ async function startServer() {
       form.fechaHasta, form.aislamiento ? 1 : 0, form.calculoHash ? 1 : 0
     );
 
+    // Save to Postgres (Neon)
+    const pool = await getPgPool();
+    if (pool) {
+      try {
+        await pool.query(`
+          INSERT INTO forms (
+            id, nombre, cedula, ciudad, telefono, direccion, 
+            marca, modelo, color, serial, imei1, imei2, 
+            numTelefónico, codigoDesbloqueo, estadoFisico, 
+            aplicacionObjeto, contactoEspecifico, fechaDesde, 
+            fechaHasta, aislamiento, calculoHash
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+        `, [
+          id, form.nombre, form.cedula, form.ciudad, form.telefono, form.direccion,
+          form.marca, form.modelo, form.color, form.serial, form.imei1, form.imei2,
+          form.numTelefónico, form.codigoDesbloqueo, form.estadoFisico,
+          form.aplicacionObjeto, form.contactoEspecifico, form.fechaDesde,
+          form.fechaHasta, form.aislamiento ? 1 : 0, form.calculoHash ? 1 : 0
+        ]);
+      } catch (err) {
+        console.error("Postgres save error:", err);
+      }
+    }
+
     res.json({ success: true, id });
   });
 
   app.get("/api/settings/neo", (req, res) => {
     const setting = db.prepare("SELECT value FROM settings WHERE key = 'neo_config'").get();
-    res.json({ config: setting ? JSON.parse(setting.value) : null });
+    res.json({ config: setting ? JSON.parse(setting.value as string) : null });
   });
 
-  app.post("/api/settings/neo", (req, res) => {
+  app.post("/api/settings/neo", async (req, res) => {
     const { config } = req.body;
     db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('neo_config', ?)").run(JSON.stringify(config));
-    res.json({ success: true });
+    pgPool = null; // Reset pool to pick up new config
+    const pool = await getPgPool();
+    res.json({ success: true, status: pool ? 'connected' : 'failed' });
   });
 
   // Vite middleware for development

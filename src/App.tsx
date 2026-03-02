@@ -13,7 +13,11 @@ export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [loginData, setLoginData] = useState({ username: '', password: '' });
   const [adminForms, setAdminForms] = useState<any[]>([]);
-  const [neoConfig, setNeoConfig] = useState({ apiKey: '', endpoint: '', status: 'disconnected' });
+  const [neoConfig, setNeoConfig] = useState({ 
+    apiKey: 'postgresql://neondb_owner:npg_XsEZ1lTGtKO2@ep-falling-firefly-ai6dlr3t-pooler.c-4.us-east-1.aws.neon.tech/neondb?sslmode=require', 
+    endpoint: 'https://ais-pre-zz47w7ss726okqsjxvcd4x-16027451891.us-east1.run.app', 
+    status: 'disconnected' 
+  });
   const [uniqueCode, setUniqueCode] = useState('SHA-2026-PENDING');
 
   const [formData, setFormData] = useState({
@@ -91,14 +95,25 @@ export default function App() {
   };
 
   const saveNeoConfig = async () => {
-    const newConfig = { ...neoConfig, status: 'connected' };
-    await fetch('/api/settings/neo', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ config: newConfig })
-    });
-    setNeoConfig(newConfig);
-    alert('Configuración de Neo guardada y conectada');
+    try {
+      const response = await fetch('/api/settings/neo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ config: { ...neoConfig, status: 'connecting' } })
+      });
+      const result = await response.json();
+      if (result.success) {
+        setNeoConfig({ ...neoConfig, status: result.status });
+        if (result.status === 'connected') {
+          alert('Conexión con Neon DB exitosa');
+          fetchAdminData();
+        } else {
+          alert('Error al conectar con Neon DB. Verifique la URL.');
+        }
+      }
+    } catch (error) {
+      alert('Error al guardar la configuración');
+    }
   };
 
   if (view === 'login') {
@@ -215,9 +230,9 @@ export default function App() {
                   </div>
                   <div className="flex items-center justify-between pt-2">
                     <div className="flex items-center space-x-2">
-                      <div className={`w-2 h-2 rounded-full ${neoConfig.status === 'connected' ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]' : 'bg-amber-400'}`}></div>
-                      <span className={`text-[10px] font-bold uppercase ${neoConfig.status === 'connected' ? 'text-emerald-400' : 'text-amber-400'}`}>
-                        {neoConfig.status === 'connected' ? 'Sincronizado' : 'Pendiente'}
+                      <div className={`w-2 h-2 rounded-full ${neoConfig.status === 'connected' ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]' : neoConfig.status === 'failed' ? 'bg-red-500' : 'bg-amber-400'}`}></div>
+                      <span className={`text-[10px] font-bold uppercase ${neoConfig.status === 'connected' ? 'text-emerald-400' : neoConfig.status === 'failed' ? 'text-red-500' : 'text-amber-400'}`}>
+                        {neoConfig.status === 'connected' ? 'Conectado' : neoConfig.status === 'failed' ? 'Error' : 'Pendiente'}
                       </span>
                     </div>
                     <button 
