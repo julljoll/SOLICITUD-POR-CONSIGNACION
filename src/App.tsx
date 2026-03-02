@@ -168,39 +168,61 @@ export default function App() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Neo Connection */}
+            {/* Neon Connection */}
             <div className="lg:col-span-1 space-y-6">
               <div className="bg-[#161b2a] p-6 rounded-2xl border border-slate-700 shadow-xl">
-                <div className="flex items-center space-x-3 mb-6">
-                  <Globe className="text-emerald-400 w-6 h-6" />
-                  <h3 className="font-bold text-white">Conexión Neo</h3>
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center space-x-3">
+                    <Globe className="text-emerald-400 w-6 h-6" />
+                    <h3 className="font-bold text-white">Conexión Neon DB</h3>
+                  </div>
+                  <div className="group relative">
+                    <div className="cursor-help text-slate-500 hover:text-emerald-400 transition-colors">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+                    </div>
+                    <div className="absolute right-0 top-8 w-64 bg-[#1a202e] border border-slate-700 p-4 rounded-xl shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                      <p className="text-[10px] text-white font-bold mb-2 uppercase tracking-widest">Instrucciones Neon</p>
+                      <ol className="text-[10px] text-slate-400 space-y-2 list-decimal ml-3">
+                        <li>Crea un proyecto en <span className="text-emerald-400">neon.tech</span></li>
+                        <li>Ve a "Dashboard" y copia la <span className="text-white">Connection String</span></li>
+                        <li>Asegúrate de incluir el usuario y contraseña en la URL</li>
+                        <li>Pega la URL en el campo "Connection String" de abajo</li>
+                        <li>Haz clic en "Conectar" para validar</li>
+                      </ol>
+                    </div>
+                  </div>
                 </div>
                 <div className="space-y-4">
                   <div>
-                    <label className="text-[10px] uppercase text-slate-500 mb-1 block">API Key</label>
+                    <label className="text-[10px] uppercase text-slate-500 mb-1 block">Connection String (Postgres)</label>
                     <input 
                       type="password" 
-                      className="w-full bg-[#1a202e] border border-slate-700 rounded-lg p-2 text-sm text-white"
+                      placeholder="postgres://user:pass@ep-host.region.aws.neon.tech/neondb"
+                      className="w-full bg-[#1a202e] border border-slate-700 rounded-lg p-2 text-sm text-white focus:border-emerald-500 outline-none"
                       value={neoConfig.apiKey}
                       onChange={(e) => setNeoConfig({...neoConfig, apiKey: e.target.value})}
                     />
                   </div>
                   <div>
-                    <label className="text-[10px] uppercase text-slate-500 mb-1 block">Endpoint Vercel</label>
+                    <label className="text-[10px] uppercase text-slate-500 mb-1 block">Vercel Deployment URL</label>
                     <input 
                       type="text" 
-                      className="w-full bg-[#1a202e] border border-slate-700 rounded-lg p-2 text-sm text-white"
+                      placeholder="https://tu-app.vercel.app"
+                      className="w-full bg-[#1a202e] border border-slate-700 rounded-lg p-2 text-sm text-white focus:border-emerald-500 outline-none"
                       value={neoConfig.endpoint}
                       onChange={(e) => setNeoConfig({...neoConfig, endpoint: e.target.value})}
                     />
                   </div>
                   <div className="flex items-center justify-between pt-2">
-                    <span className={`text-[10px] font-bold uppercase ${neoConfig.status === 'connected' ? 'text-emerald-400' : 'text-amber-400'}`}>
-                      Estado: {neoConfig.status}
-                    </span>
+                    <div className="flex items-center space-x-2">
+                      <div className={`w-2 h-2 rounded-full ${neoConfig.status === 'connected' ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]' : 'bg-amber-400'}`}></div>
+                      <span className={`text-[10px] font-bold uppercase ${neoConfig.status === 'connected' ? 'text-emerald-400' : 'text-amber-400'}`}>
+                        {neoConfig.status === 'connected' ? 'Sincronizado' : 'Pendiente'}
+                      </span>
+                    </div>
                     <button 
                       onClick={saveNeoConfig}
-                      className="bg-emerald-500 hover:bg-emerald-400 text-slate-900 text-xs font-bold px-4 py-2 rounded-md transition-all"
+                      className="bg-emerald-500 hover:bg-emerald-400 text-slate-900 text-xs font-bold px-4 py-2 rounded-md transition-all active:scale-95"
                     >
                       Conectar
                     </button>
