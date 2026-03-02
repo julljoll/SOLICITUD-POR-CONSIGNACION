@@ -229,23 +229,29 @@ async function startServer() {
       const id = crypto.createHash('sha256').update(hashData).digest('hex');
       
       // Save to SQLite (Local Cache)
-      const stmt = db.prepare(`
-        INSERT OR REPLACE INTO forms (
-          cedula, nombre, telefono, direccion, ciudad,
-          marca, modelo, color, serial, imei1, imei2, 
-          numTelefónico, codigoDesbloqueo, estadoFisico, 
-          aplicacionObjeto, contactoEspecifico, fechaDesde, 
-          fechaHasta, aislamiento, calculoHash, sha256
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `);
+      try {
+        const stmt = db.prepare(`
+          INSERT OR REPLACE INTO forms (
+            cedula, nombre, telefono, direccion, ciudad,
+            marca, modelo, color, serial, imei1, imei2, 
+            numTelefónico, codigoDesbloqueo, estadoFisico, 
+            aplicacionObjeto, contactoEspecifico, fechaDesde, 
+            fechaHasta, aislamiento, calculoHash, sha256
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
 
-      stmt.run(
-        form.cedula, form.nombre, form.telefono, form.direccion, form.ciudad,
-        form.marca, form.modelo, form.color, form.serial, form.imei1, form.imei2,
-        form.numTelefónico, form.codigoDesbloqueo, form.estadoFisico,
-        form.aplicacionObjeto, form.contactoEspecifico, form.fechaDesde,
-        form.fechaHasta, form.aislamiento ? 1 : 0, form.calculoHash ? 1 : 0, id
-      );
+        stmt.run(
+          form.cedula, form.nombre, form.telefono, form.direccion, form.ciudad,
+          form.marca, form.modelo, form.color, form.serial, form.imei1, form.imei2,
+          form.numTelefónico, form.codigoDesbloqueo, form.estadoFisico,
+          form.aplicacionObjeto, form.contactoEspecifico, form.fechaDesde,
+          form.fechaHasta, form.aislamiento ? 1 : 0, form.calculoHash ? 1 : 0, id
+        );
+        console.log("Form saved to SQLite successfully:", form.cedula);
+      } catch (sqliteErr) {
+        console.error("SQLite save error:", sqliteErr);
+        throw new Error(`Error al guardar localmente: ${sqliteErr instanceof Error ? sqliteErr.message : 'Desconocido'}`);
+      }
 
       // Save to Postgres (Neon)
       const pool = await getPgPool();

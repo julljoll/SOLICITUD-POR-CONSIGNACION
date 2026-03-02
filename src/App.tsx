@@ -95,7 +95,9 @@ export default function App() {
       }
     } catch (error) {
       console.error('Network error saving form:', error);
-      alert('Error de red al intentar guardar la planilla.');
+      // Try to get more info if it's a fetch error
+      const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
+      alert(`Error de red al intentar guardar la planilla: ${errorMessage}`);
     }
     return null;
   };
@@ -604,15 +606,15 @@ export default function App() {
               </div>
               <div>
                 <label className="label-text">Cédula / Identificación</label>
-                <div className="flex space-x-2">
-                  <select name="cedulaPrefix" value={formData.cedulaPrefix} onChange={handleInputChange} className={`input-field w-24 ${getInputClass('cedulaPrefix')}`}>
+                <div className="flex space-x-1">
+                  <select name="cedulaPrefix" value={formData.cedulaPrefix} onChange={handleInputChange} className={`input-field w-12 px-1 text-center font-bold ${getInputClass('cedulaPrefix')}`}>
                     <option value="V">V</option>
                     <option value="E">E</option>
                     <option value="J">J</option>
                     <option value="G">G</option>
                     <option value="P">P</option>
                   </select>
-                  <input type="text" name="cedula" placeholder="Ej: 12.345.678" value={formData.cedula} onChange={handleInputChange} className={`input-field flex-1 ${getInputClass('cedula')}`} />
+                  <input type="text" name="cedula" placeholder="12.345.678" value={formData.cedula} onChange={handleInputChange} className={`input-field flex-1 text-xl font-bold tracking-widest ${getInputClass('cedula')}`} />
                 </div>
               </div>
               <div>
@@ -621,16 +623,16 @@ export default function App() {
               </div>
               <div>
                 <label className="label-text">Teléfono</label>
-                <div className="flex space-x-2">
-                  <select name="telefonoCarrier" value={formData.telefonoCarrier} onChange={handleInputChange} className={`input-field w-32 ${getInputClass('telefonoCarrier')}`}>
-                    <option value="0414">0414 (Movistar)</option>
-                    <option value="0424">0424 (Movistar)</option>
-                    <option value="0412">0412 (Digitel)</option>
-                    <option value="0416">0416 (Movilnet)</option>
-                    <option value="0426">0426 (Movilnet)</option>
-                    <option value="0212">0212 (Local)</option>
+                <div className="flex space-x-1">
+                  <select name="telefonoCarrier" value={formData.telefonoCarrier} onChange={handleInputChange} className={`input-field w-20 px-1 text-center font-bold ${getInputClass('telefonoCarrier')}`}>
+                    <option value="0414">0414</option>
+                    <option value="0424">0424</option>
+                    <option value="0412">0412</option>
+                    <option value="0416">0416</option>
+                    <option value="0426">0426</option>
+                    <option value="0212">0212</option>
                   </select>
-                  <input type="text" name="telefono" placeholder="Ej: 0000000" value={formData.telefono} onChange={handleInputChange} className={`input-field flex-1 ${getInputClass('telefono')}`} />
+                  <input type="text" name="telefono" placeholder="0000000" value={formData.telefono} onChange={handleInputChange} className={`input-field flex-1 text-xl font-bold tracking-widest ${getInputClass('telefono')}`} />
                 </div>
               </div>
             </div>
