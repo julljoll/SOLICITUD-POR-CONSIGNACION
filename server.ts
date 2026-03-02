@@ -14,6 +14,16 @@ const db = new Database("forensic.db");
 // ... (rest of the database initialization remains the same)
 
 // Initialize SQLite Database
+// Drop old table if it has the old schema (id as primary key)
+const tableInfo = db.prepare("PRAGMA table_info(forms)").all() as any[];
+const hasIdColumn = tableInfo.some(col => col.name === 'id');
+const hasSha256Column = tableInfo.some(col => col.name === 'sha256');
+
+if (hasIdColumn || !hasSha256Column) {
+  console.log("Updating forms table schema...");
+  db.exec("DROP TABLE IF EXISTS forms");
+}
+
 db.exec(`
   CREATE TABLE IF NOT EXISTS forms (
     cedula TEXT PRIMARY KEY,
@@ -290,6 +300,11 @@ async function startServer() {
     }
   });
 
+  app.get("/api/settings/neo/status", async (req, res) => {
+    const pool = await getPgPool();
+    res.json({ status: pool ? 'connected' : 'disconnected' });
+  });
+
   app.get("/api/settings/neo", (req, res) => {
     const setting = db.prepare("SELECT value FROM settings WHERE key = 'neo_config'").get();
     res.json({ config: setting ? JSON.parse(setting.value as string) : null });
@@ -319,6 +334,8 @@ async function startServer() {
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
+    // Attempt to connect to Postgres on startup
+    getPgPool().catch(err => console.error("Initial Postgres connection failed:", err));
   });
 }
 

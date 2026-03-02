@@ -17,15 +17,18 @@ export default function App() {
   const [neoConfig, setNeoConfig] = useState({ 
     apiKey: 'postgresql://neondb_owner:npg_XsEZ1lTGtKO2@ep-falling-firefly-ai6dlr3t-pooler.c-4.us-east-1.aws.neon.tech/neondb?sslmode=require', 
     endpoint: 'https://ais-pre-zz47w7ss726okqsjxvcd4x-16027451891.us-east1.run.app', 
-    status: 'disconnected' 
+    status: 'connecting' 
   });
   const [uniqueCode, setUniqueCode] = useState('PENDIENTE_DE_GENERAR');
+  const [isPrinting, setIsPrinting] = useState(false);
 
-  const [formData, setFormData] = useState({
+  const DEFAULT_VALUES = {
     nombre: 'JUAN PÉREZ GARCÍA',
-    cedula: 'V-20.123.456',
+    cedula: '20.123.456',
+    cedulaPrefix: 'V',
     ciudad: 'CARACAS - DISTRITO CAPITAL',
-    telefono: '0414-1234567',
+    telefono: '1234567',
+    telefonoCarrier: '0414',
     direccion: 'Av. Francisco de Miranda, Edif. Centro, Apto 4B',
     marca: 'Samsung',
     modelo: 'Galaxy S23 Ultra',
@@ -40,9 +43,29 @@ export default function App() {
     contactoEspecifico: '0424-9876543',
     fechaDesde: '2024-01-01',
     fechaHasta: '2024-12-31',
+  };
+
+  const [formData, setFormData] = useState({
+    ...DEFAULT_VALUES,
     aislamiento: true,
     calculoHash: true
   });
+
+  const getInputClass = (name: keyof typeof formData) => {
+    if (typeof formData[name] === 'boolean') return '';
+    const isDefault = formData[name] === DEFAULT_VALUES[name as keyof typeof DEFAULT_VALUES];
+    return `${isDefault ? 'text-red-500 border-red-500/30' : 'text-emerald-400 border-emerald-500/30'}`;
+  };
+
+  useEffect(() => {
+    if (isPrinting && uniqueCode !== 'PENDIENTE_DE_GENERAR') {
+      const timer = setTimeout(() => {
+        window.print();
+        setIsPrinting(false);
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [isPrinting, uniqueCode]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
@@ -52,10 +75,15 @@ export default function App() {
 
   const saveForm = async () => {
     try {
+      const dataToSave = {
+        ...formData,
+        cedula: `${formData.cedulaPrefix}-${formData.cedula}`,
+        telefono: `${formData.telefonoCarrier}-${formData.telefono}`
+      };
       const response = await fetch('/api/forms', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+        body: JSON.stringify(dataToSave)
       });
       const result = await response.json();
       if (result.success) {
@@ -73,21 +101,25 @@ export default function App() {
   };
 
   const handlePrint = async () => {
+    console.log("Print requested...");
     // Basic validation
     const requiredFields = ['nombre', 'cedula', 'ciudad', 'telefono', 'marca', 'modelo', 'serial'];
     const missingFields = requiredFields.filter(field => !formData[field as keyof typeof formData]);
     
     if (missingFields.length > 0) {
+      console.warn("Missing fields:", missingFields);
       alert("Por favor rellene todos los campos obligatorios antes de imprimir.");
       return;
     }
 
+    console.log("Saving form...");
     const id = await saveForm();
     if (id) {
+      console.log("Form saved with ID:", id);
       setUniqueCode(id);
-      setTimeout(() => window.print(), 500);
+      setIsPrinting(true);
     } else {
-      alert("Error al guardar la planilla en la base de datos.");
+      console.error("Form save failed, print aborted.");
     }
   };
 
@@ -99,17 +131,23 @@ export default function App() {
   };
 
   const fetchAdminData = async () => {
-    const [formsRes, postsRes, neoRes] = await Promise.all([
+    const [formsRes, postsRes, neoRes, statusRes] = await Promise.all([
       fetch('/api/forms'),
       fetch('/api/posts'),
-      fetch('/api/settings/neo')
+      fetch('/api/settings/neo'),
+      fetch('/api/settings/neo/status')
     ]);
     const forms = await formsRes.json();
     const posts = await postsRes.json();
     const neo = await neoRes.json();
+    const status = await statusRes.json();
     setAdminForms(forms);
     setAdminPosts(posts);
-    if (neo.config) setNeoConfig(neo.config);
+    if (neo.config) {
+      setNeoConfig({ ...neo.config, status: status.status });
+    } else {
+      setNeoConfig(prev => ({ ...prev, status: status.status }));
+    }
   };
 
   const saveNeoConfig = async () => {
@@ -252,9 +290,9 @@ export default function App() {
                   </div>
                   <div className="flex items-center justify-between pt-2">
                     <div className="flex items-center space-x-2">
-                      <div className={`w-2 h-2 rounded-full ${neoConfig.status === 'connected' ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]' : neoConfig.status === 'failed' ? 'bg-red-500' : 'bg-amber-400'}`}></div>
-                      <span className={`text-[10px] font-bold uppercase ${neoConfig.status === 'connected' ? 'text-emerald-400' : neoConfig.status === 'failed' ? 'text-red-500' : 'text-amber-400'}`}>
-                        {neoConfig.status === 'connected' ? 'Conectado' : neoConfig.status === 'failed' ? 'Error' : 'Pendiente'}
+                      <div className={`w-2 h-2 rounded-full ${neoConfig.status === 'connected' ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]' : neoConfig.status === 'failed' || neoConfig.status === 'disconnected' ? 'bg-red-500' : 'bg-amber-400'}`}></div>
+                      <span className={`text-[10px] font-bold uppercase ${neoConfig.status === 'connected' ? 'text-emerald-400' : neoConfig.status === 'failed' || neoConfig.status === 'disconnected' ? 'text-red-500' : 'text-amber-400'}`}>
+                        {neoConfig.status === 'connected' ? 'Conexión Activa' : neoConfig.status === 'failed' ? 'Error de Conexión' : neoConfig.status === 'disconnected' ? 'Desconectada' : 'Conectando...'}
                       </span>
                     </div>
                     <button 
@@ -562,25 +600,44 @@ export default function App() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="label-text">Nombre Completo</label>
-                <input type="text" name="nombre" placeholder="Ej: Juan Alberto Pérez García" value={formData.nombre} onChange={handleInputChange} className="input-field" />
+                <input type="text" name="nombre" placeholder="Ej: Juan Alberto Pérez García" value={formData.nombre} onChange={handleInputChange} className={`input-field ${getInputClass('nombre')}`} />
               </div>
               <div>
                 <label className="label-text">Cédula / Identificación</label>
-                <input type="text" name="cedula" placeholder="Ej: V-12.345.678" value={formData.cedula} onChange={handleInputChange} className="input-field" />
+                <div className="flex space-x-2">
+                  <select name="cedulaPrefix" value={formData.cedulaPrefix} onChange={handleInputChange} className={`input-field w-24 ${getInputClass('cedulaPrefix')}`}>
+                    <option value="V">V</option>
+                    <option value="E">E</option>
+                    <option value="J">J</option>
+                    <option value="G">G</option>
+                    <option value="P">P</option>
+                  </select>
+                  <input type="text" name="cedula" placeholder="Ej: 12.345.678" value={formData.cedula} onChange={handleInputChange} className={`input-field flex-1 ${getInputClass('cedula')}`} />
+                </div>
               </div>
               <div>
                 <label className="label-text">Ciudad</label>
-                <input type="text" name="ciudad" placeholder="Ej: Caracas, Distrito Capital" value={formData.ciudad} onChange={handleInputChange} className="input-field" />
+                <input type="text" name="ciudad" placeholder="Ej: Caracas, Distrito Capital" value={formData.ciudad} onChange={handleInputChange} className={`input-field ${getInputClass('ciudad')}`} />
               </div>
               <div>
                 <label className="label-text">Teléfono</label>
-                <input type="text" name="telefono" placeholder="Ej: 0414-0000000" value={formData.telefono} onChange={handleInputChange} className="input-field" />
+                <div className="flex space-x-2">
+                  <select name="telefonoCarrier" value={formData.telefonoCarrier} onChange={handleInputChange} className={`input-field w-32 ${getInputClass('telefonoCarrier')}`}>
+                    <option value="0414">0414 (Movistar)</option>
+                    <option value="0424">0424 (Movistar)</option>
+                    <option value="0412">0412 (Digitel)</option>
+                    <option value="0416">0416 (Movilnet)</option>
+                    <option value="0426">0426 (Movilnet)</option>
+                    <option value="0212">0212 (Local)</option>
+                  </select>
+                  <input type="text" name="telefono" placeholder="Ej: 0000000" value={formData.telefono} onChange={handleInputChange} className={`input-field flex-1 ${getInputClass('telefono')}`} />
+                </div>
               </div>
             </div>
             
             <div>
               <label className="label-text">Dirección Completa</label>
-              <input type="text" name="direccion" placeholder="Av. Principal, Edif. Centro, Piso 2, Apto 24" value={formData.direccion} onChange={handleInputChange} className="input-field" />
+              <input type="text" name="direccion" placeholder="Av. Principal, Edif. Centro, Piso 2, Apto 24" value={formData.direccion} onChange={handleInputChange} className={`input-field ${getInputClass('direccion')}`} />
             </div>
 
             <div className="bg-emerald-500/5 border-l-2 border-emerald-500 p-4 rounded-r-md text-xs leading-relaxed italic text-slate-400">
@@ -598,35 +655,35 @@ export default function App() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="label-text">Marca</label>
-                <input type="text" name="marca" placeholder="Ej: Samsung, Apple, Xiaomi" value={formData.marca} onChange={handleInputChange} className="input-field" />
+                <input type="text" name="marca" placeholder="Ej: Samsung, Apple, Xiaomi" value={formData.marca} onChange={handleInputChange} className={`input-field ${getInputClass('marca')}`} />
               </div>
               <div>
                 <label className="label-text">Modelo</label>
-                <input type="text" name="modelo" placeholder="Ej: Galaxy S23, iPhone 15 Pro" value={formData.modelo} onChange={handleInputChange} className="input-field" />
+                <input type="text" name="modelo" placeholder="Ej: Galaxy S23, iPhone 15 Pro" value={formData.modelo} onChange={handleInputChange} className={`input-field ${getInputClass('modelo')}`} />
               </div>
               <div>
                 <label className="label-text">Color</label>
-                <input type="text" name="color" placeholder="Ej: Negro, Azul, Plata" value={formData.color} onChange={handleInputChange} className="input-field" />
+                <input type="text" name="color" placeholder="Ej: Negro, Azul, Plata" value={formData.color} onChange={handleInputChange} className={`input-field ${getInputClass('color')}`} />
               </div>
               <div>
                 <label className="label-text">Serial de Fábrica</label>
-                <input type="text" name="serial" placeholder="Nº de serie del fabricante" value={formData.serial} onChange={handleInputChange} className="input-field" />
+                <input type="text" name="serial" placeholder="Nº de serie del fabricante" value={formData.serial} onChange={handleInputChange} className={`input-field ${getInputClass('serial')}`} />
               </div>
               <div>
                 <label className="label-text">IMEI 1</label>
-                <input type="text" name="imei1" placeholder="15 dígitos" value={formData.imei1} onChange={handleInputChange} className="input-field" />
+                <input type="text" name="imei1" placeholder="15 dígitos" value={formData.imei1} onChange={handleInputChange} className={`input-field ${getInputClass('imei1')}`} />
               </div>
               <div>
                 <label className="label-text">IMEI 2</label>
-                <input type="text" name="imei2" placeholder="15 dígitos (opcional)" value={formData.imei2} onChange={handleInputChange} className="input-field" />
+                <input type="text" name="imei2" placeholder="15 dígitos (opcional)" value={formData.imei2} onChange={handleInputChange} className={`input-field ${getInputClass('imei2')}`} />
               </div>
               <div>
                 <label className="label-text">Nº Telefónico / Operadora</label>
-                <input type="text" name="numTelefónico" placeholder="Ej: 0412-1234567 (Movistar)" value={formData.numTelefónico} onChange={handleInputChange} className="input-field" />
+                <input type="text" name="numTelefónico" placeholder="Ej: 0412-1234567 (Movistar)" value={formData.numTelefónico} onChange={handleInputChange} className={`input-field ${getInputClass('numTelefónico')}`} />
               </div>
               <div>
                 <label className="label-text">Código de Desbloqueo (PIN/Patrón)</label>
-                <input type="text" name="codigoDesbloqueo" placeholder="Ej: 1234 o 'Patrón en L'" value={formData.codigoDesbloqueo} onChange={handleInputChange} className="input-field" />
+                <input type="text" name="codigoDesbloqueo" placeholder="Ej: 1234 o 'Patrón en L'" value={formData.codigoDesbloqueo} onChange={handleInputChange} className={`input-field ${getInputClass('codigoDesbloqueo')}`} />
               </div>
               <div>
                 <label className="label-text">Estado Físico</label>
@@ -664,14 +721,14 @@ export default function App() {
               </div>
               <div>
                 <label className="label-text">Número de Contacto Específico</label>
-                <input type="text" name="contactoEspecifico" placeholder="Ej: 0424-0000000" value={formData.contactoEspecifico} onChange={handleInputChange} className="input-field" />
+                <input type="text" name="contactoEspecifico" placeholder="Ej: 0424-0000000" value={formData.contactoEspecifico} onChange={handleInputChange} className={`input-field ${getInputClass('contactoEspecifico')}`} />
               </div>
               <div>
                 <label className="label-text">Rango de Fechas (Desde - Hasta)</label>
                 <div className="flex items-center space-x-2">
-                  <input type="date" name="fechaDesde" value={formData.fechaDesde} onChange={handleInputChange} className="input-field text-xs" />
+                  <input type="date" name="fechaDesde" value={formData.fechaDesde} onChange={handleInputChange} className={`input-field text-xs ${getInputClass('fechaDesde')}`} />
                   <span className="text-xs">al</span>
-                  <input type="date" name="fechaHasta" value={formData.fechaHasta} onChange={handleInputChange} className="input-field text-xs" />
+                  <input type="date" name="fechaHasta" value={formData.fechaHasta} onChange={handleInputChange} className={`input-field text-xs ${getInputClass('fechaHasta')}`} />
                 </div>
               </div>
             </div>
