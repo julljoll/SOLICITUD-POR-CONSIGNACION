@@ -3,10 +3,19 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Settings, Lock, Database, Globe, ArrowLeft, Trash2, ExternalLink, ShieldCheck } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 
 export default function App() {
   const formRef = useRef<HTMLFormElement>(null);
+  const [view, setView] = useState<'form' | 'login' | 'admin'>('form');
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [loginData, setLoginData] = useState({ username: '', password: '' });
+  const [adminForms, setAdminForms] = useState<any[]>([]);
+  const [neoConfig, setNeoConfig] = useState({ apiKey: '', endpoint: '', status: 'disconnected' });
+  const [uniqueCode, setUniqueCode] = useState('SHA-2026-PENDING');
+
   const [formData, setFormData] = useState({
     nombre: 'JUAN PÉREZ GARCÍA',
     cedula: 'V-20.123.456',
@@ -36,14 +45,251 @@ export default function App() {
     setFormData(prev => ({ ...prev, [name]: val }));
   };
 
-  const handlePrint = () => {
-    window.print();
+  const saveForm = async () => {
+    try {
+      const response = await fetch('/api/forms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData)
+      });
+      const result = await response.json();
+      if (result.success) {
+        setUniqueCode(result.id);
+        return result.id;
+      }
+    } catch (error) {
+      console.error('Error saving form:', error);
+    }
+    return null;
   };
+
+  const handlePrint = async () => {
+    const id = await saveForm();
+    if (id) {
+      setTimeout(() => window.print(), 500);
+    } else {
+      alert("Error al guardar la planilla en la base de datos.");
+    }
+  };
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(loginData)
+      });
+      const result = await response.json();
+      if (result.success) {
+        setIsLoggedIn(true);
+        setView('admin');
+        fetchAdminData();
+      } else {
+        alert(result.message);
+      }
+    } catch (error) {
+      alert('Error de conexión');
+    }
+  };
+
+  const fetchAdminData = async () => {
+    const [formsRes, neoRes] = await Promise.all([
+      fetch('/api/forms'),
+      fetch('/api/settings/neo')
+    ]);
+    const forms = await formsRes.json();
+    const neo = await neoRes.json();
+    setAdminForms(forms);
+    if (neo.config) setNeoConfig(neo.config);
+  };
+
+  const saveNeoConfig = async () => {
+    const newConfig = { ...neoConfig, status: 'connected' };
+    await fetch('/api/settings/neo', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ config: newConfig })
+    });
+    setNeoConfig(newConfig);
+    alert('Configuración de Neo guardada y conectada');
+  };
+
+  if (view === 'login') {
+    return (
+      <div className="min-h-screen bg-[#0a0f1c] flex items-center justify-center p-4">
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-[#161b2a] p-8 rounded-2xl border border-slate-700 w-full max-w-md shadow-2xl"
+        >
+          <div className="flex justify-center mb-6">
+            <div className="bg-emerald-500/10 p-4 rounded-full border border-emerald-500/20">
+              <Lock className="text-emerald-400 w-8 h-8" />
+            </div>
+          </div>
+          <h2 className="text-2xl font-bold text-white text-center mb-8">Panel de Control</h2>
+          <form onSubmit={handleLogin} className="space-y-6">
+            <div>
+              <label className="text-xs uppercase tracking-widest text-slate-500 mb-2 block">Usuario</label>
+              <input 
+                type="text" 
+                className="w-full bg-[#1a202e] border border-slate-700 rounded-lg p-3 text-white focus:border-emerald-500 outline-none"
+                value={loginData.username}
+                onChange={(e) => setLoginData({...loginData, username: e.target.value})}
+              />
+            </div>
+            <div>
+              <label className="text-xs uppercase tracking-widest text-slate-500 mb-2 block">Contraseña</label>
+              <input 
+                type="password" 
+                className="w-full bg-[#1a202e] border border-slate-700 rounded-lg p-3 text-white focus:border-emerald-500 outline-none"
+                value={loginData.password}
+                onChange={(e) => setLoginData({...loginData, password: e.target.value})}
+              />
+            </div>
+            <button className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-bold py-3 rounded-lg transition-all">
+              Acceder
+            </button>
+            <button 
+              type="button"
+              onClick={() => setView('form')}
+              className="w-full text-slate-400 text-sm hover:text-white transition-colors"
+            >
+              Volver al Formulario
+            </button>
+          </form>
+        </motion.div>
+      </div>
+    );
+  }
+
+  if (view === 'admin') {
+    return (
+      <div className="min-h-screen bg-[#0a0f1c] text-slate-300 p-4 md:p-8">
+        <div className="max-w-6xl mx-auto space-y-8">
+          <div className="flex justify-between items-center">
+            <div className="flex items-center space-x-4">
+              <button onClick={() => setView('form')} className="p-2 hover:bg-slate-800 rounded-lg transition-colors">
+                <ArrowLeft className="w-6 h-6" />
+              </button>
+              <h1 className="text-2xl font-bold text-white">Administración Forense</h1>
+            </div>
+            <div className="flex items-center space-x-2 bg-emerald-500/10 px-4 py-2 rounded-full border border-emerald-500/20">
+              <ShieldCheck className="text-emerald-400 w-5 h-5" />
+              <span className="text-emerald-400 text-sm font-semibold">Sesión Activa</span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* Neo Connection */}
+            <div className="lg:col-span-1 space-y-6">
+              <div className="bg-[#161b2a] p-6 rounded-2xl border border-slate-700 shadow-xl">
+                <div className="flex items-center space-x-3 mb-6">
+                  <Globe className="text-emerald-400 w-6 h-6" />
+                  <h3 className="font-bold text-white">Conexión Neo</h3>
+                </div>
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-[10px] uppercase text-slate-500 mb-1 block">API Key</label>
+                    <input 
+                      type="password" 
+                      className="w-full bg-[#1a202e] border border-slate-700 rounded-lg p-2 text-sm text-white"
+                      value={neoConfig.apiKey}
+                      onChange={(e) => setNeoConfig({...neoConfig, apiKey: e.target.value})}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] uppercase text-slate-500 mb-1 block">Endpoint Vercel</label>
+                    <input 
+                      type="text" 
+                      className="w-full bg-[#1a202e] border border-slate-700 rounded-lg p-2 text-sm text-white"
+                      value={neoConfig.endpoint}
+                      onChange={(e) => setNeoConfig({...neoConfig, endpoint: e.target.value})}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between pt-2">
+                    <span className={`text-[10px] font-bold uppercase ${neoConfig.status === 'connected' ? 'text-emerald-400' : 'text-amber-400'}`}>
+                      Estado: {neoConfig.status}
+                    </span>
+                    <button 
+                      onClick={saveNeoConfig}
+                      className="bg-emerald-500 hover:bg-emerald-400 text-slate-900 text-xs font-bold px-4 py-2 rounded-md transition-all"
+                    >
+                      Conectar
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-[#161b2a] p-6 rounded-2xl border border-slate-700 shadow-xl">
+                <div className="flex items-center space-x-3 mb-4">
+                  <Database className="text-emerald-400 w-6 h-6" />
+                  <h3 className="font-bold text-white">Estadísticas</h3>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-[#1a202e] p-4 rounded-xl border border-slate-700">
+                    <p className="text-[10px] text-slate-500 uppercase">Total Planillas</p>
+                    <p className="text-2xl font-bold text-white">{adminForms.length}</p>
+                  </div>
+                  <div className="bg-[#1a202e] p-4 rounded-xl border border-slate-700">
+                    <p className="text-[10px] text-slate-500 uppercase">Hoy</p>
+                    <p className="text-2xl font-bold text-white">
+                      {adminForms.filter(f => new Date(f.created_at).toDateString() === new Date().toDateString()).length}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Forms List */}
+            <div className="lg:col-span-2">
+              <div className="bg-[#161b2a] rounded-2xl border border-slate-700 shadow-xl overflow-hidden">
+                <div className="p-6 border-b border-slate-700">
+                  <h3 className="font-bold text-white">Planillas Generadas</h3>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left">
+                    <thead className="bg-[#1a202e] text-[10px] uppercase text-slate-500">
+                      <tr>
+                        <th className="px-6 py-4">Código ID</th>
+                        <th className="px-6 py-4">Solicitante</th>
+                        <th className="px-6 py-4">Dispositivo</th>
+                        <th className="px-6 py-4">Fecha</th>
+                        <th className="px-6 py-4 text-right">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800">
+                      {adminForms.map((form) => (
+                        <tr key={form.id} className="hover:bg-slate-800/50 transition-colors">
+                          <td className="px-6 py-4 font-mono text-emerald-400 text-xs">{form.id}</td>
+                          <td className="px-6 py-4 text-sm text-white">{form.nombre}</td>
+                          <td className="px-6 py-4 text-sm text-slate-400">{form.modelo}</td>
+                          <td className="px-6 py-4 text-sm text-slate-500">
+                            {new Date(form.created_at).toLocaleDateString()}
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <button className="p-2 hover:text-emerald-400 transition-colors">
+                              <ExternalLink className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#0a0f1c] text-slate-300 p-4 md:p-8 font-sans selection:bg-emerald-500/30">
       <style dangerouslySetInnerHTML={{ __html: `
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
         
         :root {
           --accent: #00ff88;
@@ -116,6 +362,12 @@ export default function App() {
           .footer-note {
             color: #555 !important;
           }
+
+          .unique-code-print {
+            display: block !important;
+            color: black !important;
+            font-family: 'JetBrains Mono', monospace !important;
+          }
         }
 
         .input-field {
@@ -143,9 +395,17 @@ export default function App() {
         }
       `}} />
 
-      <div className="max-w-4xl mx-auto print-container">
+      <div className="max-w-4xl mx-auto print-container relative">
+        {/* Unique Code Display (Top Left) */}
+        <div className="absolute top-0 left-0 flex flex-col items-start">
+          <div className="bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-md mb-1">
+            <span className="text-[10px] font-bold text-emerald-400 tracking-widest uppercase">ID Planilla</span>
+          </div>
+          <p className="font-mono text-sm font-bold text-white unique-code-print">{uniqueCode}</p>
+        </div>
+
         {/* Header */}
-        <div className="flex justify-end mb-8">
+        <div className="flex flex-col items-end mb-8">
           <div className="logo-container border border-slate-700 bg-[#161b2a] p-4 rounded-lg text-right w-64">
             <h1 className="text-2xl font-bold tracking-tighter logo-text">
               <span className="text-emerald-400">SHA</span>256<span className="text-slate-100">.US</span>
@@ -154,6 +414,15 @@ export default function App() {
               forensic laboratory operations
             </p>
           </div>
+          
+          {/* Admin Button (Below Logo) */}
+          <button 
+            onClick={() => setView('login')}
+            className="mt-4 flex items-center space-x-2 text-[10px] font-bold uppercase tracking-widest text-slate-500 hover:text-emerald-400 transition-colors no-print"
+          >
+            <Settings className="w-3 h-3" />
+            <span>Panel de Control</span>
+          </button>
         </div>
 
         <form ref={formRef} className="space-y-8">
@@ -234,7 +503,7 @@ export default function App() {
               </div>
               <div>
                 <label className="label-text">Estado Físico</label>
-                <select name="estadoFisico" value={formData.estadoFisico} onChange={handleInputChange} className="input-field appearance-none bg-[url('data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%23718096%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E')] bg-[length:1.2em] bg-[right_0.5rem_center] bg-no-repeat">
+                <select name="estadoFisico" value={formData.estadoFisico} onChange={handleInputChange} className="input-field appearance-none bg-[url('data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%22%20fill%3D%22none%22%20stroke%3D%22%23718096%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E')] bg-[length:1.2em] bg-[right_0.5rem_center] bg-no-repeat">
                   <option value="Optimo">Optimo</option>
                   <option value="Regular">Regular</option>
                   <option value="Dañado">Dañado</option>
