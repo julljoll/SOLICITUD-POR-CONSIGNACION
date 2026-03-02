@@ -16,12 +16,11 @@ const db = new Database("forensic.db");
 // Initialize SQLite Database
 db.exec(`
   CREATE TABLE IF NOT EXISTS forms (
-    id TEXT PRIMARY KEY,
+    cedula TEXT PRIMARY KEY,
     nombre TEXT,
-    cedula TEXT,
-    ciudad TEXT,
     telefono TEXT,
     direccion TEXT,
+    ciudad TEXT,
     marca TEXT,
     modelo TEXT,
     color TEXT,
@@ -37,6 +36,7 @@ db.exec(`
     fechaHasta TEXT,
     aislamiento INTEGER,
     calculoHash INTEGER,
+    sha256 TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
@@ -93,12 +93,11 @@ const getPgPool = async () => {
       const client = await pgPool.connect();
       await client.query(`
         CREATE TABLE IF NOT EXISTS forms (
-          id TEXT PRIMARY KEY,
+          cedula TEXT PRIMARY KEY,
           nombre TEXT,
-          cedula TEXT,
-          ciudad TEXT,
           telefono TEXT,
           direccion TEXT,
+          ciudad TEXT,
           marca TEXT,
           modelo TEXT,
           color TEXT,
@@ -114,6 +113,7 @@ const getPgPool = async () => {
           fechaHasta TEXT,
           aislamiento INTEGER,
           calculoHash INTEGER,
+          sha256 TEXT,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
 
@@ -220,21 +220,21 @@ async function startServer() {
       
       // Save to SQLite (Local Cache)
       const stmt = db.prepare(`
-        INSERT INTO forms (
-          id, nombre, cedula, ciudad, telefono, direccion, 
+        INSERT OR REPLACE INTO forms (
+          cedula, nombre, telefono, direccion, ciudad,
           marca, modelo, color, serial, imei1, imei2, 
           numTelefónico, codigoDesbloqueo, estadoFisico, 
           aplicacionObjeto, contactoEspecifico, fechaDesde, 
-          fechaHasta, aislamiento, calculoHash
+          fechaHasta, aislamiento, calculoHash, sha256
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       stmt.run(
-        id, form.nombre, form.cedula, form.ciudad, form.telefono, form.direccion,
+        form.cedula, form.nombre, form.telefono, form.direccion, form.ciudad,
         form.marca, form.modelo, form.color, form.serial, form.imei1, form.imei2,
         form.numTelefónico, form.codigoDesbloqueo, form.estadoFisico,
         form.aplicacionObjeto, form.contactoEspecifico, form.fechaDesde,
-        form.fechaHasta, form.aislamiento ? 1 : 0, form.calculoHash ? 1 : 0
+        form.fechaHasta, form.aislamiento ? 1 : 0, form.calculoHash ? 1 : 0, id
       );
 
       // Save to Postgres (Neon)
@@ -243,18 +243,39 @@ async function startServer() {
         try {
           await pool.query(`
             INSERT INTO forms (
-              id, nombre, cedula, ciudad, telefono, direccion, 
+              cedula, nombre, telefono, direccion, ciudad,
               marca, modelo, color, serial, imei1, imei2, 
               numTelefónico, codigoDesbloqueo, estadoFisico, 
               aplicacionObjeto, contactoEspecifico, fechaDesde, 
-              fechaHasta, aislamiento, calculoHash
+              fechaHasta, aislamiento, calculoHash, sha256
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+            ON CONFLICT (cedula) DO UPDATE SET
+              nombre = EXCLUDED.nombre,
+              telefono = EXCLUDED.telefono,
+              direccion = EXCLUDED.direccion,
+              ciudad = EXCLUDED.ciudad,
+              marca = EXCLUDED.marca,
+              modelo = EXCLUDED.modelo,
+              color = EXCLUDED.color,
+              serial = EXCLUDED.serial,
+              imei1 = EXCLUDED.imei1,
+              imei2 = EXCLUDED.imei2,
+              numTelefónico = EXCLUDED.numTelefónico,
+              codigoDesbloqueo = EXCLUDED.codigoDesbloqueo,
+              estadoFisico = EXCLUDED.estadoFisico,
+              aplicacionObjeto = EXCLUDED.aplicacionObjeto,
+              contactoEspecifico = EXCLUDED.contactoEspecifico,
+              fechaDesde = EXCLUDED.fechaDesde,
+              fechaHasta = EXCLUDED.fechaHasta,
+              aislamiento = EXCLUDED.aislamiento,
+              calculoHash = EXCLUDED.calculoHash,
+              sha256 = EXCLUDED.sha256
           `, [
-            id, form.nombre, form.cedula, form.ciudad, form.telefono, form.direccion,
+            form.cedula, form.nombre, form.telefono, form.direccion, form.ciudad,
             form.marca, form.modelo, form.color, form.serial, form.imei1, form.imei2,
             form.numTelefónico, form.codigoDesbloqueo, form.estadoFisico,
             form.aplicacionObjeto, form.contactoEspecifico, form.fechaDesde,
-            form.fechaHasta, form.aislamiento ? 1 : 0, form.calculoHash ? 1 : 0
+            form.fechaHasta, form.aislamiento ? 1 : 0, form.calculoHash ? 1 : 0, id
           ]);
           console.log("Form saved to Neon successfully");
         } catch (err) {

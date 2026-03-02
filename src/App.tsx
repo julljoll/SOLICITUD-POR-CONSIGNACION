@@ -352,23 +352,21 @@ export default function App() {
                   <table className="w-full text-left">
                     <thead className="bg-[#1a202e] text-[10px] uppercase text-slate-500">
                       <tr>
-                        <th className="px-6 py-4">Código ID</th>
-                        <th className="px-6 py-4">Solicitante</th>
-                        <th className="px-6 py-4">Dispositivo</th>
-                        <th className="px-6 py-4">Fecha</th>
+                        <th className="px-6 py-4">Cédula (ID)</th>
+                        <th className="px-6 py-4">Nombre</th>
+                        <th className="px-6 py-4">Teléfono</th>
+                        <th className="px-6 py-4">SHA256</th>
                         <th className="px-6 py-4 text-right">Acciones</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-800">
                       {adminForms.map((form) => (
-                        <tr key={form.id} className="hover:bg-slate-800/50 transition-colors">
-                          <td className="px-6 py-4 font-mono text-emerald-400 text-xs" title={form.id}>
-                            {form.id.substring(0, 12)}...
-                          </td>
+                        <tr key={form.cedula} className="hover:bg-slate-800/50 transition-colors">
+                          <td className="px-6 py-4 font-mono text-emerald-400 text-xs">{form.cedula}</td>
                           <td className="px-6 py-4 text-sm text-white">{form.nombre}</td>
-                          <td className="px-6 py-4 text-sm text-slate-400">{form.modelo}</td>
-                          <td className="px-6 py-4 text-sm text-slate-500">
-                            {new Date(form.created_at).toLocaleDateString()}
+                          <td className="px-6 py-4 text-sm text-slate-400">{form.telefono}</td>
+                          <td className="px-6 py-4 font-mono text-emerald-500/70 text-[10px]" title={form.sha256}>
+                            {form.sha256?.substring(0, 16)}...
                           </td>
                           <td className="px-6 py-4 text-right">
                             <button className="p-2 hover:text-emerald-400 transition-colors">
