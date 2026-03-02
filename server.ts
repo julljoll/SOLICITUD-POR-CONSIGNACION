@@ -3,6 +3,7 @@ import { createServer as createViteServer } from "vite";
 import Database from "better-sqlite3";
 import pg from "pg";
 import path from "path";
+import crypto from "crypto";
 import { fileURLToPath } from "url";
 
 const { Pool } = pg;
@@ -10,6 +11,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const db = new Database("forensic.db");
+// ... (rest of the database initialization remains the same)
 
 // Initialize SQLite Database
 db.exec(`
@@ -139,7 +141,14 @@ async function startServer() {
 
   app.post("/api/forms", async (req, res) => {
     const form = req.body;
-    const id = `SHA-${new Date().getFullYear()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+    
+    // Generate SHA256 hash of the form content
+    const hashData = JSON.stringify({
+      ...form,
+      timestamp: new Date().toISOString(),
+      random: Math.random()
+    });
+    const id = crypto.createHash('sha256').update(hashData).digest('hex');
     
     // Save to SQLite (Local Cache)
     const stmt = db.prepare(`

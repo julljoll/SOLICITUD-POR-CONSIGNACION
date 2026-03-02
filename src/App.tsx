@@ -18,7 +18,7 @@ export default function App() {
     endpoint: 'https://ais-pre-zz47w7ss726okqsjxvcd4x-16027451891.us-east1.run.app', 
     status: 'disconnected' 
   });
-  const [uniqueCode, setUniqueCode] = useState('SHA-2026-PENDING');
+  const [uniqueCode, setUniqueCode] = useState('PENDIENTE_DE_GENERAR');
 
   const [formData, setFormData] = useState({
     nombre: 'JUAN PÉREZ GARCÍA',
@@ -68,8 +68,18 @@ export default function App() {
   };
 
   const handlePrint = async () => {
+    // Basic validation
+    const requiredFields = ['nombre', 'cedula', 'ciudad', 'telefono', 'marca', 'modelo', 'serial'];
+    const missingFields = requiredFields.filter(field => !formData[field as keyof typeof formData]);
+    
+    if (missingFields.length > 0) {
+      alert("Por favor rellene todos los campos obligatorios antes de imprimir.");
+      return;
+    }
+
     const id = await saveForm();
     if (id) {
+      setUniqueCode(id);
       setTimeout(() => window.print(), 500);
     } else {
       alert("Error al guardar la planilla en la base de datos.");
@@ -285,7 +295,9 @@ export default function App() {
                     <tbody className="divide-y divide-slate-800">
                       {adminForms.map((form) => (
                         <tr key={form.id} className="hover:bg-slate-800/50 transition-colors">
-                          <td className="px-6 py-4 font-mono text-emerald-400 text-xs">{form.id}</td>
+                          <td className="px-6 py-4 font-mono text-emerald-400 text-xs" title={form.id}>
+                            {form.id.substring(0, 12)}...
+                          </td>
                           <td className="px-6 py-4 text-sm text-white">{form.nombre}</td>
                           <td className="px-6 py-4 text-sm text-slate-400">{form.modelo}</td>
                           <td className="px-6 py-4 text-sm text-slate-500">
@@ -424,7 +436,9 @@ export default function App() {
           <div className="bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-md mb-1">
             <span className="text-[10px] font-bold text-emerald-400 tracking-widest uppercase">ID Planilla</span>
           </div>
-          <p className="font-mono text-sm font-bold text-white unique-code-print">{uniqueCode}</p>
+          <p className="font-mono text-[10px] font-bold text-white unique-code-print opacity-80">
+            SHA256; <span className="text-emerald-400">{uniqueCode}</span>
+          </p>
         </div>
 
         {/* Header */}
