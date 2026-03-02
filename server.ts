@@ -40,6 +40,13 @@ db.exec(`
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
+  CREATE TABLE IF NOT EXISTS posts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT,
+    content TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
   CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT
@@ -51,6 +58,10 @@ db.exec(`
   );
 
   INSERT OR IGNORE INTO users (username, password) VALUES ('julljoll', '15816003');
+
+  INSERT OR IGNORE INTO posts (title, content) VALUES 
+  ('Sistema SHA256.US Activo', 'Se ha desplegado la versión 1.0 del sistema de planillas forenses con integración Neon DB.'),
+  ('Actualización de Seguridad', 'Se ha implementado la generación de hashes SHA256 reales para cada documento generado.');
 `);
 
 // Postgres Pool for Neon
@@ -61,12 +72,20 @@ const getPgPool = async () => {
   
   const setting = db.prepare("SELECT value FROM settings WHERE key = 'neo_config'").get();
   const config = setting ? JSON.parse(setting.value as string) : null;
-  const connectionString = process.env.DATABASE_URL || config?.apiKey;
+  
+  let connectionString = process.env.DATABASE_URL;
+  
+  // If env var is missing or invalid, fallback to UI config
+  if (!connectionString || !connectionString.startsWith('postgres')) {
+    connectionString = config?.apiKey;
+  }
 
-  if (connectionString) {
+  if (connectionString && connectionString.startsWith('postgres')) {
+    console.log("Attempting to connect to Postgres...");
     pgPool = new Pool({
       connectionString,
-      ssl: { rejectUnauthorized: false }
+      ssl: { rejectUnauthorized: false },
+      connectionTimeoutMillis: 10000, // 10 second timeout
     });
     
     // Initialize Postgres Schema
@@ -97,13 +116,25 @@ const getPgPool = async () => {
           calculoHash INTEGER,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
+
+        CREATE TABLE IF NOT EXISTS posts (
+          id SERIAL PRIMARY KEY,
+          title TEXT,
+          content TEXT,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
       `);
       client.release();
-      console.log("Connected to Neon Postgres");
-    } catch (err) {
-      console.error("Failed to connect to Neon Postgres:", err);
+      console.log("Successfully connected to Neon Postgres");
+    } catch (err: any) {
+      console.error("Failed to connect to Neon Postgres:", err.message);
+      if (err.code === 'EAI_AGAIN') {
+        console.error("DNS Resolution Error. This is often a temporary network issue. Retrying may help.");
+      }
       pgPool = null;
     }
+  } else if (connectionString) {
+    console.warn("Invalid connection string format detected. Connection aborted.");
   }
   return pgPool;
 };
@@ -139,61 +170,103 @@ async function startServer() {
     res.json(forms);
   });
 
-  app.post("/api/forms", async (req, res) => {
-    const form = req.body;
-    
-    // Generate SHA256 hash of the form content
-    const hashData = JSON.stringify({
-      ...form,
-      timestamp: new Date().toISOString(),
-      random: Math.random()
-    });
-    const id = crypto.createHash('sha256').update(hashData).digest('hex');
-    
-    // Save to SQLite (Local Cache)
-    const stmt = db.prepare(`
-      INSERT INTO forms (
-        id, nombre, cedula, ciudad, telefono, direccion, 
-        marca, modelo, color, serial, imei1, imei2, 
-        numTelefónico, codigoDesbloqueo, estadoFisico, 
-        aplicacionObjeto, contactoEspecifico, fechaDesde, 
-        fechaHasta, aislamiento, calculoHash
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
+  app.get("/api/posts", async (req, res) => {
+    const pool = await getPgPool();
+    if (pool) {
+      const client = await pool.connect();
+      try {
+        const { rows } = await client.query('SELECT * FROM posts ORDER BY created_at DESC');
+        return res.json(rows);
+      } catch (err) {
+        console.error("Postgres posts fetch error:", err);
+      } finally {
+        client.release();
+      }
+    }
+    const posts = db.prepare("SELECT * FROM posts ORDER BY created_at DESC").all();
+    res.json(posts);
+  });
 
-    stmt.run(
-      id, form.nombre, form.cedula, form.ciudad, form.telefono, form.direccion,
-      form.marca, form.modelo, form.color, form.serial, form.imei1, form.imei2,
-      form.numTelefónico, form.codigoDesbloqueo, form.estadoFisico,
-      form.aplicacionObjeto, form.contactoEspecifico, form.fechaDesde,
-      form.fechaHasta, form.aislamiento ? 1 : 0, form.calculoHash ? 1 : 0
-    );
-
-    // Save to Postgres (Neon)
+  app.post("/api/posts", async (req, res) => {
+    const { title, content } = req.body;
+    
+    // Save to SQLite
+    db.prepare("INSERT INTO posts (title, content) VALUES (?, ?)").run(title, content);
+    
+    // Save to Postgres
     const pool = await getPgPool();
     if (pool) {
       try {
-        await pool.query(`
-          INSERT INTO forms (
-            id, nombre, cedula, ciudad, telefono, direccion, 
-            marca, modelo, color, serial, imei1, imei2, 
-            numTelefónico, codigoDesbloqueo, estadoFisico, 
-            aplicacionObjeto, contactoEspecifico, fechaDesde, 
-            fechaHasta, aislamiento, calculoHash
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
-        `, [
-          id, form.nombre, form.cedula, form.ciudad, form.telefono, form.direccion,
-          form.marca, form.modelo, form.color, form.serial, form.imei1, form.imei2,
-          form.numTelefónico, form.codigoDesbloqueo, form.estadoFisico,
-          form.aplicacionObjeto, form.contactoEspecifico, form.fechaDesde,
-          form.fechaHasta, form.aislamiento ? 1 : 0, form.calculoHash ? 1 : 0
-        ]);
+        await pool.query("INSERT INTO posts (title, content) VALUES ($1, $2)", [title, content]);
       } catch (err) {
-        console.error("Postgres save error:", err);
+        console.error("Postgres post save error:", err);
       }
     }
+    res.json({ success: true });
+  });
 
-    res.json({ success: true, id });
+  app.post("/api/forms", async (req, res) => {
+    try {
+      const form = req.body;
+      console.log("Incoming form submission:", form.nombre);
+      
+      // Generate SHA256 hash of the form content
+      const hashData = JSON.stringify({
+        ...form,
+        timestamp: new Date().toISOString(),
+        random: Math.random()
+      });
+      const id = crypto.createHash('sha256').update(hashData).digest('hex');
+      
+      // Save to SQLite (Local Cache)
+      const stmt = db.prepare(`
+        INSERT INTO forms (
+          id, nombre, cedula, ciudad, telefono, direccion, 
+          marca, modelo, color, serial, imei1, imei2, 
+          numTelefónico, codigoDesbloqueo, estadoFisico, 
+          aplicacionObjeto, contactoEspecifico, fechaDesde, 
+          fechaHasta, aislamiento, calculoHash
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      stmt.run(
+        id, form.nombre, form.cedula, form.ciudad, form.telefono, form.direccion,
+        form.marca, form.modelo, form.color, form.serial, form.imei1, form.imei2,
+        form.numTelefónico, form.codigoDesbloqueo, form.estadoFisico,
+        form.aplicacionObjeto, form.contactoEspecifico, form.fechaDesde,
+        form.fechaHasta, form.aislamiento ? 1 : 0, form.calculoHash ? 1 : 0
+      );
+
+      // Save to Postgres (Neon)
+      const pool = await getPgPool();
+      if (pool) {
+        try {
+          await pool.query(`
+            INSERT INTO forms (
+              id, nombre, cedula, ciudad, telefono, direccion, 
+              marca, modelo, color, serial, imei1, imei2, 
+              numTelefónico, codigoDesbloqueo, estadoFisico, 
+              aplicacionObjeto, contactoEspecifico, fechaDesde, 
+              fechaHasta, aislamiento, calculoHash
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+          `, [
+            id, form.nombre, form.cedula, form.ciudad, form.telefono, form.direccion,
+            form.marca, form.modelo, form.color, form.serial, form.imei1, form.imei2,
+            form.numTelefónico, form.codigoDesbloqueo, form.estadoFisico,
+            form.aplicacionObjeto, form.contactoEspecifico, form.fechaDesde,
+            form.fechaHasta, form.aislamiento ? 1 : 0, form.calculoHash ? 1 : 0
+          ]);
+          console.log("Form saved to Neon successfully");
+        } catch (err) {
+          console.error("Postgres save error:", err);
+        }
+      }
+
+      res.json({ success: true, id });
+    } catch (error: any) {
+      console.error("General form save error:", error);
+      res.status(500).json({ success: false, error: error.message });
+    }
   });
 
   app.get("/api/settings/neo", (req, res) => {

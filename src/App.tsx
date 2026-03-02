@@ -13,6 +13,7 @@ export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [loginData, setLoginData] = useState({ username: '', password: '' });
   const [adminForms, setAdminForms] = useState<any[]>([]);
+  const [adminPosts, setAdminPosts] = useState<any[]>([]);
   const [neoConfig, setNeoConfig] = useState({ 
     apiKey: 'postgresql://neondb_owner:npg_XsEZ1lTGtKO2@ep-falling-firefly-ai6dlr3t-pooler.c-4.us-east-1.aws.neon.tech/neondb?sslmode=require', 
     endpoint: 'https://ais-pre-zz47w7ss726okqsjxvcd4x-16027451891.us-east1.run.app', 
@@ -60,9 +61,13 @@ export default function App() {
       if (result.success) {
         setUniqueCode(result.id);
         return result.id;
+      } else {
+        console.error('Server error saving form:', result.error);
+        alert(`Error del servidor: ${result.error || 'Desconocido'}`);
       }
     } catch (error) {
-      console.error('Error saving form:', error);
+      console.error('Network error saving form:', error);
+      alert('Error de red al intentar guardar la planilla.');
     }
     return null;
   };
@@ -94,17 +99,24 @@ export default function App() {
   };
 
   const fetchAdminData = async () => {
-    const [formsRes, neoRes] = await Promise.all([
+    const [formsRes, postsRes, neoRes] = await Promise.all([
       fetch('/api/forms'),
+      fetch('/api/posts'),
       fetch('/api/settings/neo')
     ]);
     const forms = await formsRes.json();
+    const posts = await postsRes.json();
     const neo = await neoRes.json();
     setAdminForms(forms);
+    setAdminPosts(posts);
     if (neo.config) setNeoConfig(neo.config);
   };
 
   const saveNeoConfig = async () => {
+    if (!neoConfig.apiKey.startsWith('postgres')) {
+      alert('La URL de conexión debe empezar con "postgresql://"');
+      return;
+    }
     try {
       const response = await fetch('/api/settings/neo', {
         method: 'POST',
@@ -118,7 +130,7 @@ export default function App() {
           alert('Conexión con Neon DB exitosa');
           fetchAdminData();
         } else {
-          alert('Error al conectar con Neon DB. Verifique la URL.');
+          alert('Error al conectar con Neon DB. Verifique que la URL sea correcta y tenga permisos de acceso.');
         }
       }
     } catch (error) {
@@ -273,6 +285,61 @@ export default function App() {
                   </div>
                 </div>
               </div>
+
+              {/* Noticias Section */}
+              <div className="bg-[#161b2a] p-6 rounded-2xl border border-slate-700 shadow-xl">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center space-x-3">
+                    <Globe className="text-emerald-400 w-6 h-6" />
+                    <h3 className="font-bold text-white">Noticias / Comunicados</h3>
+                  </div>
+                </div>
+                
+                <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                  {adminPosts.length === 0 ? (
+                    <p className="text-xs text-slate-500 italic text-center py-4">No hay comunicados recientes.</p>
+                  ) : (
+                    adminPosts.map((post, index) => (
+                      <div key={index} className="bg-[#1a202e] p-4 rounded-xl border border-slate-700 hover:border-emerald-500/30 transition-colors">
+                        <h4 className="font-bold text-white text-sm mb-1">{post.title}</h4>
+                        <p className="text-xs text-slate-400 leading-relaxed">{post.content}</p>
+                        <p className="text-[9px] text-slate-600 mt-2 uppercase font-bold">
+                          {new Date(post.created_at).toLocaleString()}
+                        </p>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                {/* Simple Post Form */}
+                <div className="mt-6 pt-6 border-t border-slate-700">
+                  <p className="text-[10px] font-bold text-slate-500 uppercase mb-3">Nuevo Comunicado</p>
+                  <div className="space-y-3">
+                    <input 
+                      type="text" 
+                      placeholder="Título del comunicado"
+                      className="input-field text-xs"
+                      onKeyDown={async (e) => {
+                        if (e.key === 'Enter') {
+                          const input = e.currentTarget;
+                          const title = input.value;
+                          const content = prompt("Contenido del comunicado:");
+                          if (title && content) {
+                            await fetch('/api/posts', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ title, content })
+                            });
+                            input.value = '';
+                            fetchAdminData();
+                          }
+                        }
+                      }}
+                    />
+                    <p className="text-[9px] text-slate-600 italic">Presiona Enter para guardar el título y luego ingresa el contenido.</p>
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* Forms List */}
@@ -405,19 +472,44 @@ export default function App() {
           }
         }
 
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: #1a202e;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: #2d3748;
+          border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: #10b981;
+        }
+
         .input-field {
           background: #1a202e;
           border: 1px solid #2d3748;
-          border-radius: 4px;
-          padding: 10px;
+          border-radius: 6px;
+          padding: 10px 12px;
           width: 100%;
           color: white;
-          transition: border-color 0.2s;
+          font-size: 13px;
+          transition: all 0.2s ease;
+        }
+
+        .input-field::placeholder {
+          color: rgba(255, 255, 255, 0.2);
+          font-style: normal;
+          font-size: 12px;
+          font-weight: 300;
+          letter-spacing: 0.02em;
         }
 
         .input-field:focus {
           outline: none;
-          border-color: var(--accent);
+          border-color: #10b981;
+          background: #1f2937;
+          box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.1);
         }
 
         .label-text {
@@ -472,25 +564,25 @@ export default function App() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="label-text">Nombre Completo</label>
-                <input type="text" name="nombre" value={formData.nombre} onChange={handleInputChange} className="input-field" />
+                <input type="text" name="nombre" placeholder="Ej: Juan Alberto Pérez García" value={formData.nombre} onChange={handleInputChange} className="input-field" />
               </div>
               <div>
                 <label className="label-text">Cédula / Identificación</label>
-                <input type="text" name="cedula" value={formData.cedula} onChange={handleInputChange} className="input-field" />
+                <input type="text" name="cedula" placeholder="Ej: V-12.345.678" value={formData.cedula} onChange={handleInputChange} className="input-field" />
               </div>
               <div>
                 <label className="label-text">Ciudad</label>
-                <input type="text" name="ciudad" value={formData.ciudad} onChange={handleInputChange} className="input-field" />
+                <input type="text" name="ciudad" placeholder="Ej: Caracas, Distrito Capital" value={formData.ciudad} onChange={handleInputChange} className="input-field" />
               </div>
               <div>
                 <label className="label-text">Teléfono</label>
-                <input type="text" name="telefono" value={formData.telefono} onChange={handleInputChange} className="input-field" />
+                <input type="text" name="telefono" placeholder="Ej: 0414-0000000" value={formData.telefono} onChange={handleInputChange} className="input-field" />
               </div>
             </div>
             
             <div>
               <label className="label-text">Dirección Completa</label>
-              <input type="text" name="direccion" value={formData.direccion} onChange={handleInputChange} className="input-field" />
+              <input type="text" name="direccion" placeholder="Av. Principal, Edif. Centro, Piso 2, Apto 24" value={formData.direccion} onChange={handleInputChange} className="input-field" />
             </div>
 
             <div className="bg-emerald-500/5 border-l-2 border-emerald-500 p-4 rounded-r-md text-xs leading-relaxed italic text-slate-400">
@@ -508,35 +600,35 @@ export default function App() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="label-text">Marca</label>
-                <input type="text" name="marca" value={formData.marca} onChange={handleInputChange} className="input-field" />
+                <input type="text" name="marca" placeholder="Ej: Samsung, Apple, Xiaomi" value={formData.marca} onChange={handleInputChange} className="input-field" />
               </div>
               <div>
                 <label className="label-text">Modelo</label>
-                <input type="text" name="modelo" value={formData.modelo} onChange={handleInputChange} className="input-field" />
+                <input type="text" name="modelo" placeholder="Ej: Galaxy S23, iPhone 15 Pro" value={formData.modelo} onChange={handleInputChange} className="input-field" />
               </div>
               <div>
                 <label className="label-text">Color</label>
-                <input type="text" name="color" value={formData.color} onChange={handleInputChange} className="input-field" />
+                <input type="text" name="color" placeholder="Ej: Negro, Azul, Plata" value={formData.color} onChange={handleInputChange} className="input-field" />
               </div>
               <div>
                 <label className="label-text">Serial de Fábrica</label>
-                <input type="text" name="serial" value={formData.serial} onChange={handleInputChange} className="input-field" />
+                <input type="text" name="serial" placeholder="Nº de serie del fabricante" value={formData.serial} onChange={handleInputChange} className="input-field" />
               </div>
               <div>
                 <label className="label-text">IMEI 1</label>
-                <input type="text" name="imei1" value={formData.imei1} onChange={handleInputChange} className="input-field" />
+                <input type="text" name="imei1" placeholder="15 dígitos" value={formData.imei1} onChange={handleInputChange} className="input-field" />
               </div>
               <div>
                 <label className="label-text">IMEI 2</label>
-                <input type="text" name="imei2" value={formData.imei2} onChange={handleInputChange} className="input-field" />
+                <input type="text" name="imei2" placeholder="15 dígitos (opcional)" value={formData.imei2} onChange={handleInputChange} className="input-field" />
               </div>
               <div>
                 <label className="label-text">Nº Telefónico / Operadora</label>
-                <input type="text" name="numTelefónico" value={formData.numTelefónico} onChange={handleInputChange} className="input-field" />
+                <input type="text" name="numTelefónico" placeholder="Ej: 0412-1234567 (Movistar)" value={formData.numTelefónico} onChange={handleInputChange} className="input-field" />
               </div>
               <div>
                 <label className="label-text">Código de Desbloqueo (PIN/Patrón)</label>
-                <input type="text" name="codigoDesbloqueo" placeholder="Ej: 1234 o descripción" value={formData.codigoDesbloqueo} onChange={handleInputChange} className="input-field" />
+                <input type="text" name="codigoDesbloqueo" placeholder="Ej: 1234 o 'Patrón en L'" value={formData.codigoDesbloqueo} onChange={handleInputChange} className="input-field" />
               </div>
               <div>
                 <label className="label-text">Estado Físico</label>
@@ -574,7 +666,7 @@ export default function App() {
               </div>
               <div>
                 <label className="label-text">Número de Contacto Específico</label>
-                <input type="text" name="contactoEspecifico" value={formData.contactoEspecifico} onChange={handleInputChange} className="input-field" />
+                <input type="text" name="contactoEspecifico" placeholder="Ej: 0424-0000000" value={formData.contactoEspecifico} onChange={handleInputChange} className="input-field" />
               </div>
               <div>
                 <label className="label-text">Rango de Fechas (Desde - Hasta)</label>
