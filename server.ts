@@ -46,7 +46,7 @@ db.exec(`
     password TEXT
   );
 
-  INSERT OR IGNORE INTO users (username, password) VALUES ('admin', 'admin123');
+  INSERT OR IGNORE INTO users (username, password) VALUES ('julljoll', '15816003');
 `);
 
 async function startServer() {
