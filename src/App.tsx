@@ -24,41 +24,78 @@ export default function App() {
   });
   const [uniqueCode, setUniqueCode] = useState('PENDIENTE_DE_GENERAR');
   const [isDownloading, setIsDownloading] = useState(false);
+  const [validationModal, setValidationModal] = useState<string[]>([]);
   const pdfRef = useRef<HTMLDivElement>(null);
 
-  const DEFAULT_VALUES = {
-    nombre: 'JUAN PÉREZ GARCÍA',
-    cedula: '20.123.456',
+  // Placeholder hints (shown in inputs when empty — NOT pre-filled values)
+  const PLACEHOLDERS = {
+    nombre: 'Ej: Juan Alberto Pérez García',
+    cedula: '12.345.678',
     cedulaPrefix: 'V',
-    ciudad: 'CARACAS - DISTRITO CAPITAL',
-    telefono: '1234567',
+    ciudad: 'Ej: Caracas, Distrito Capital',
+    telefono: '0000000',
     telefonoCarrier: '0414',
-    direccion: 'Av. Francisco de Miranda, Edif. Centro, Apto 4B',
-    marca: 'Samsung',
-    modelo: 'Galaxy S23 Ultra',
-    color: 'Phantom Black',
-    serial: 'RF8W1234567X',
-    imei1: '351234567890123',
-    imei2: '351234567890124',
-    numTelefónico: '0412-7654321 / Movistar',
-    codigoDesbloqueo: 'PIN: 1234 / Patrón en forma de L',
-    estadoFisico: 'Optimo',
-    aplicacionObjeto: 'WhatsApp',
-    contactoEspecifico: '0424-9876543',
-    fechaDesde: '2024-01-01',
-    fechaHasta: '2024-12-31',
+    direccion: 'Av. Principal, Edif. Centro, Piso 2, Apto 24',
+    marca: 'Ej: Samsung, Apple, Xiaomi',
+    modelo: 'Ej: Galaxy S23, iPhone 15 Pro',
+    color: 'Ej: Negro, Azul, Plata',
+    serial: 'Número de serie del fabricante',
+    imei1: '15 dígitos',
+    imei2: '15 dígitos (opcional)',
+    numTelefónico: 'Ej: 0412-1234567 (Movistar)',
+    codigoDesbloqueo: "Ej: 1234 o 'Patrón en L'",
+    contactoEspecifico: 'Ej: 0424-0000000',
+  };
+
+  const REQUIRED_FIELD_LABELS: Record<string, string> = {
+    nombre: 'Nombre Completo',
+    cedula: 'Cédula / Identificación',
+    ciudad: 'Ciudad',
+    telefono: 'Teléfono',
+    direccion: 'Dirección Completa',
+    marca: 'Marca del Dispositivo',
+    modelo: 'Modelo del Dispositivo',
+    color: 'Color',
+    serial: 'Serial de Fábrica',
+    imei1: 'IMEI 1',
+    numTelefónico: 'Nº Telefónico / Operadora',
+    codigoDesbloqueo: 'Código de Desbloqueo',
+    contactoEspecifico: 'Contacto Específico',
+    fechaDesde: 'Fecha Desde',
+    fechaHasta: 'Fecha Hasta',
   };
 
   const [formData, setFormData] = useState({
-    ...DEFAULT_VALUES,
+    nombre: '',
+    cedula: '',
+    cedulaPrefix: 'V',
+    ciudad: '',
+    telefono: '',
+    telefonoCarrier: '0414',
+    direccion: '',
+    marca: '',
+    modelo: '',
+    color: '',
+    serial: '',
+    imei1: '',
+    imei2: '',
+    numTelefónico: '',
+    codigoDesbloqueo: '',
+    estadoFisico: 'Optimo',
+    aplicacionObjeto: 'WhatsApp',
+    contactoEspecifico: '',
+    fechaDesde: '',
+    fechaHasta: '',
     aislamiento: true,
-    calculoHash: true
+    calculoHash: true,
   });
 
+  // Returns styling based on whether the field has been filled in
   const getInputClass = (name: keyof typeof formData) => {
     if (typeof formData[name] === 'boolean') return '';
-    const isDefault = formData[name] === DEFAULT_VALUES[name as keyof typeof DEFAULT_VALUES];
-    return `${isDefault ? 'text-slate-500 border-slate-600 italic' : 'text-emerald-400 border-emerald-500/30'}`;
+    const val = formData[name] as string;
+    if (!val) return 'border-slate-700';  // empty — neutral
+    return 'text-emerald-400 border-emerald-500/30'; // filled — green
   };
 
 
@@ -109,10 +146,16 @@ export default function App() {
   };
 
   const handleDownload = async () => {
-    const requiredFields = ['nombre', 'cedula', 'ciudad', 'telefono', 'marca', 'modelo', 'serial'];
-    const missingFields = requiredFields.filter(f => !formData[f as keyof typeof formData]);
-    if (missingFields.length > 0) {
-      alert('Por favor rellene todos los campos obligatorios antes de descargar.');
+    // Validate ALL required fields
+    const missing = Object.entries(REQUIRED_FIELD_LABELS)
+      .filter(([key]) => {
+        const val = formData[key as keyof typeof formData];
+        return typeof val === 'string' && val.trim() === '';
+      })
+      .map(([, label]) => label);
+
+    if (missing.length > 0) {
+      setValidationModal(missing);
       return;
     }
 
@@ -879,6 +922,68 @@ export default function App() {
             </p>
           </div>
         </form>
+
+        {/* ── Validation Modal ─────────────────────────────────── */}
+        <AnimatePresence>
+          {validationModal.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="no-print fixed inset-0 z-50 flex items-center justify-center p-4"
+              style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)' }}
+              onClick={() => setValidationModal([])}
+            >
+              <motion.div
+                initial={{ scale: 0.92, y: 24, opacity: 0 }}
+                animate={{ scale: 1, y: 0, opacity: 1 }}
+                exit={{ scale: 0.92, y: 24, opacity: 0 }}
+                transition={{ type: 'spring', stiffness: 320, damping: 28 }}
+                onClick={e => e.stopPropagation()}
+                style={{
+                  background: 'linear-gradient(145deg, #0f172a, #111827)',
+                  border: '1px solid rgba(239,68,68,0.35)',
+                  borderRadius: '16px',
+                  maxWidth: '440px',
+                  width: '100%',
+                  overflow: 'hidden',
+                  boxShadow: '0 24px 60px rgba(0,0,0,0.7)',
+                }}
+              >
+                {/* Header */}
+                <div style={{ background: 'linear-gradient(135deg,rgba(239,68,68,0.2),rgba(239,68,68,0.05))', borderBottom: '1px solid rgba(239,68,68,0.2)', padding: '18px 20px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><circle cx="12" cy="16" r="0.5" fill="#ef4444" /></svg>
+                  </div>
+                  <div>
+                    <p style={{ color: '#f87171', fontWeight: 700, fontSize: '14px', margin: 0 }}>Campos incompletos</p>
+                    <p style={{ color: '#94a3b8', fontSize: '11px', margin: '2px 0 0' }}>Completa los siguientes campos antes de descargar</p>
+                  </div>
+                </div>
+                {/* Field list */}
+                <div style={{ padding: '16px 20px', maxHeight: '280px', overflowY: 'auto' }}>
+                  <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {validationModal.map(label => (
+                      <li key={label} style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)', borderRadius: '8px', padding: '8px 12px' }}>
+                        <span style={{ color: '#ef4444', fontSize: '16px', lineHeight: 1, flexShrink: 0 }}>✕</span>
+                        <span style={{ color: '#e2e8f0', fontSize: '12px', fontWeight: 500 }}>{label}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                {/* Footer */}
+                <div style={{ padding: '12px 20px', borderTop: '1px solid rgba(45,55,72,0.8)', display: 'flex', justifyContent: 'flex-end' }}>
+                  <button
+                    onClick={() => setValidationModal([])}
+                    style={{ background: 'linear-gradient(135deg,#dc2626,#b91c1c)', color: 'white', border: 'none', borderRadius: '8px', padding: '9px 20px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', letterSpacing: '0.02em' }}
+                  >
+                    Entendido, completar datos
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Action Buttons */}
         <div className="no-print flex flex-col sm:flex-row items-center justify-between gap-4 mt-8 pt-6 border-t border-slate-800/60">
