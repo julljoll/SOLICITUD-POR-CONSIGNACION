@@ -3,12 +3,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Settings, Lock, Database, Globe, ArrowLeft, ExternalLink, ShieldCheck, Download } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { Settings, Lock, Database, Globe, ArrowLeft, ExternalLink, ShieldCheck, Printer, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
-// html2pdf.js – loaded dynamically to avoid SSR issues
-declare const html2pdf: any;
 
 export default function App() {
   const formRef = useRef<HTMLFormElement>(null);
@@ -23,9 +21,9 @@ export default function App() {
     status: 'connecting'
   });
   const [uniqueCode, setUniqueCode] = useState('PENDIENTE_DE_GENERAR');
-  const [isDownloading, setIsDownloading] = useState(false);
+  const [isPrinting, setIsPrinting] = useState(false);
   const [validationModal, setValidationModal] = useState<string[]>([]);
-  const pdfRef = useRef<HTMLDivElement>(null);
+  const [sha256Modal, setSha256Modal] = useState<string | null>(null);
 
   // Placeholder hints (shown in inputs when empty — NOT pre-filled values)
   const PLACEHOLDERS = {
@@ -134,18 +132,9 @@ export default function App() {
     return null;
   };
 
-  const loadHtml2Pdf = (): Promise<void> => {
-    return new Promise((resolve, reject) => {
-      if (typeof html2pdf !== 'undefined') { resolve(); return; }
-      const script = document.createElement('script');
-      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.4/html2pdf.bundle.min.js';
-      script.onload = () => resolve();
-      script.onerror = () => reject(new Error('No se pudo cargar html2pdf'));
-      document.head.appendChild(script);
-    });
-  };
 
-  const handleDownload = async () => {
+
+  const handlePrint = async () => {
     // Validate ALL required fields
     const missing = Object.entries(REQUIRED_FIELD_LABELS)
       .filter(([key]) => {
@@ -159,48 +148,20 @@ export default function App() {
       return;
     }
 
-    setIsDownloading(true);
+    setIsPrinting(true);
     try {
-      // 1. Save form to backend & get SHA256 id
+      // 1. Save to DB first so we have the SHA256 before printing
       const id = await saveForm();
-      if (!id) { setIsDownloading(false); return; }
-
-      // 2. Let React re-render with the new uniqueCode (already set inside saveForm)
-      await new Promise(r => setTimeout(r, 300));
-
-      // 3. Load html2pdf lazily
-      await loadHtml2Pdf();
-
-      // 4. Grab the hidden white-bg PDF container
-      const el = pdfRef.current;
-      if (!el) { setIsDownloading(false); return; }
-
-      // 5. Generate & download
-      const cedulaClean = `${formData.cedulaPrefix}-${formData.cedula}`.replace(/[^a-zA-Z0-9-]/g, '');
-      const filename = `solicitud-forense-${cedulaClean}.pdf`;
-
-      await html2pdf()
-        .set({
-          margin: [1.5, 1.5, 1.5, 1.5], // cm: top, left, bottom, right
-          filename,
-          image: { type: 'jpeg', quality: 0.98 },
-          html2canvas: {
-            scale: 2,
-            backgroundColor: '#ffffff',
-            useCORS: true,
-            logging: false,
-          },
-          jsPDF: { unit: 'cm', format: 'legal', orientation: 'portrait' },
-          pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
-        })
-        .from(el)
-        .save();
-    } catch (err) {
-      console.error('PDF generation error:', err);
-      alert('Error al generar el PDF. Intente de nuevo.');
-    } finally {
-      setIsDownloading(false);
+      // If saving failed, uniqueCode stays as-is but we still print
+      if (id) {
+        // Let React re-render with the new uniqueCode
+        await new Promise(r => setTimeout(r, 200));
+      }
+    } catch {
+      // Don't block printing if save fails
     }
+    window.print();
+    setIsPrinting(false);
   };
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -321,200 +282,282 @@ export default function App() {
 
   if (view === 'admin') {
     return (
-      <div className="min-h-screen bg-[#0a0f1c] text-slate-300 p-4 md:p-8">
-        <div className="max-w-6xl mx-auto space-y-8">
-          <div className="flex justify-between items-center">
-            <div className="flex items-center space-x-4">
-              <button onClick={() => setView('form')} className="p-2 hover:bg-slate-800 rounded-lg transition-colors">
-                <ArrowLeft className="w-6 h-6" />
-              </button>
-              <h1 className="text-2xl font-bold text-white">Administración Forense</h1>
-            </div>
-            <div className="flex items-center space-x-2 bg-emerald-500/10 px-4 py-2 rounded-full border border-emerald-500/20">
-              <ShieldCheck className="text-emerald-400 w-5 h-5" />
-              <span className="text-emerald-400 text-sm font-semibold">Sesión Activa</span>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Neon Connection */}
-            <div className="lg:col-span-1 space-y-6">
-              <div className="bg-[#161b2a] p-6 rounded-2xl border border-slate-700 shadow-xl">
-                <div className="flex items-center justify-between mb-6">
-                  <div className="flex items-center space-x-3">
-                    <Globe className="text-emerald-400 w-6 h-6" />
-                    <h3 className="font-bold text-white">Conexión Neon DB</h3>
-                  </div>
-                  <div className="group relative">
-                    <div className="cursor-help text-slate-500 hover:text-emerald-400 transition-colors">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" /></svg>
-                    </div>
-                    <div className="absolute right-0 top-8 w-64 bg-[#1a202e] border border-slate-700 p-4 rounded-xl shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
-                      <p className="text-[10px] text-white font-bold mb-2 uppercase tracking-widest">Instrucciones Neon</p>
-                      <ol className="text-[10px] text-slate-400 space-y-2 list-decimal ml-3">
-                        <li>Crea un proyecto en <span className="text-emerald-400">neon.tech</span></li>
-                        <li>Ve a "Dashboard" y copia la <span className="text-white">Connection String</span></li>
-                        <li>Asegúrate de incluir el usuario y contraseña en la URL</li>
-                        <li>Pega la URL en el campo "Connection String" de abajo</li>
-                        <li>Haz clic en "Conectar" para validar</li>
-                      </ol>
-                    </div>
-                  </div>
-                </div>
-                <div className="space-y-4">
-                  <div>
-                    <label className="text-[10px] uppercase text-slate-500 mb-1 block">Connection String (Postgres)</label>
-                    <input
-                      type="password"
-                      placeholder="postgres://user:pass@ep-host.region.aws.neon.tech/neondb"
-                      className="w-full bg-[#1a202e] border border-slate-700 rounded-lg p-2 text-sm text-white focus:border-emerald-500 outline-none"
-                      value={neoConfig.apiKey}
-                      onChange={(e) => setNeoConfig({ ...neoConfig, apiKey: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] uppercase text-slate-500 mb-1 block">Vercel Deployment URL</label>
-                    <input
-                      type="text"
-                      placeholder="https://tu-app.vercel.app"
-                      className="w-full bg-[#1a202e] border border-slate-700 rounded-lg p-2 text-sm text-white focus:border-emerald-500 outline-none"
-                      value={neoConfig.endpoint}
-                      onChange={(e) => setNeoConfig({ ...neoConfig, endpoint: e.target.value })}
-                    />
-                  </div>
-                  <div className="flex items-center justify-between pt-2">
-                    <div className="flex items-center space-x-2">
-                      <div className={`w-2 h-2 rounded-full ${neoConfig.status === 'connected' ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]' : neoConfig.status === 'failed' || neoConfig.status === 'disconnected' ? 'bg-red-500' : 'bg-amber-400'}`}></div>
-                      <span className={`text-[10px] font-bold uppercase ${neoConfig.status === 'connected' ? 'text-emerald-400' : neoConfig.status === 'failed' || neoConfig.status === 'disconnected' ? 'text-red-500' : 'text-amber-400'}`}>
-                        {neoConfig.status === 'connected' ? 'Conexión Activa' : neoConfig.status === 'failed' ? 'Error de Conexión' : neoConfig.status === 'disconnected' ? 'Desconectada' : 'Conectando...'}
-                      </span>
-                    </div>
-                    <button
-                      onClick={saveNeoConfig}
-                      className="bg-emerald-500 hover:bg-emerald-400 text-slate-900 text-xs font-bold px-4 py-2 rounded-md transition-all active:scale-95"
-                    >
-                      Conectar
-                    </button>
-                  </div>
-                </div>
+      <>
+        <div className="min-h-screen bg-[#0a0f1c] text-slate-300 p-4 md:p-8">
+          <div className="max-w-6xl mx-auto space-y-8">
+            <div className="flex justify-between items-center">
+              <div className="flex items-center space-x-4">
+                <button onClick={() => setView('form')} className="p-2 hover:bg-slate-800 rounded-lg transition-colors">
+                  <ArrowLeft className="w-6 h-6" />
+                </button>
+                <h1 className="text-2xl font-bold text-white">Administración Forense</h1>
               </div>
-
-              <div className="bg-[#161b2a] p-6 rounded-2xl border border-slate-700 shadow-xl">
-                <div className="flex items-center space-x-3 mb-4">
-                  <Database className="text-emerald-400 w-6 h-6" />
-                  <h3 className="font-bold text-white">Estadísticas</h3>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-[#1a202e] p-4 rounded-xl border border-slate-700">
-                    <p className="text-[10px] text-slate-500 uppercase">Total Planillas</p>
-                    <p className="text-2xl font-bold text-white">{adminForms.length}</p>
-                  </div>
-                  <div className="bg-[#1a202e] p-4 rounded-xl border border-slate-700">
-                    <p className="text-[10px] text-slate-500 uppercase">Hoy</p>
-                    <p className="text-2xl font-bold text-white">
-                      {adminForms.filter(f => new Date(f.created_at).toDateString() === new Date().toDateString()).length}
-                    </p>
-                  </div>
-                </div>
+              <div className="flex items-center space-x-2 bg-emerald-500/10 px-4 py-2 rounded-full border border-emerald-500/20">
+                <ShieldCheck className="text-emerald-400 w-5 h-5" />
+                <span className="text-emerald-400 text-sm font-semibold">Sesión Activa</span>
               </div>
+            </div>
 
-              {/* Noticias Section */}
-              <div className="bg-[#161b2a] p-6 rounded-2xl border border-slate-700 shadow-xl">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center space-x-3">
-                    <Globe className="text-emerald-400 w-6 h-6" />
-                    <h3 className="font-bold text-white">Noticias / Comunicados</h3>
-                  </div>
-                </div>
-
-                <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
-                  {adminPosts.length === 0 ? (
-                    <p className="text-xs text-slate-500 italic text-center py-4">No hay comunicados recientes.</p>
-                  ) : (
-                    adminPosts.map((post, index) => (
-                      <div key={index} className="bg-[#1a202e] p-4 rounded-xl border border-slate-700 hover:border-emerald-500/30 transition-colors">
-                        <h4 className="font-bold text-white text-sm mb-1">{post.title}</h4>
-                        <p className="text-xs text-slate-400 leading-relaxed">{post.content}</p>
-                        <p className="text-[9px] text-slate-600 mt-2 uppercase font-bold">
-                          {new Date(post.created_at).toLocaleString()}
-                        </p>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              {/* Neon Connection */}
+              <div className="lg:col-span-1 space-y-6">
+                <div className="bg-[#161b2a] p-6 rounded-2xl border border-slate-700 shadow-xl">
+                  <div className="flex items-center justify-between mb-6">
+                    <div className="flex items-center space-x-3">
+                      <Globe className="text-emerald-400 w-6 h-6" />
+                      <h3 className="font-bold text-white">Conexión Neon DB</h3>
+                    </div>
+                    <div className="group relative">
+                      <div className="cursor-help text-slate-500 hover:text-emerald-400 transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" /></svg>
                       </div>
-                    ))
-                  )}
+                      <div className="absolute right-0 top-8 w-64 bg-[#1a202e] border border-slate-700 p-4 rounded-xl shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                        <p className="text-[10px] text-white font-bold mb-2 uppercase tracking-widest">Instrucciones Neon</p>
+                        <ol className="text-[10px] text-slate-400 space-y-2 list-decimal ml-3">
+                          <li>Crea un proyecto en <span className="text-emerald-400">neon.tech</span></li>
+                          <li>Ve a "Dashboard" y copia la <span className="text-white">Connection String</span></li>
+                          <li>Asegúrate de incluir el usuario y contraseña en la URL</li>
+                          <li>Pega la URL en el campo "Connection String" de abajo</li>
+                          <li>Haz clic en "Conectar" para validar</li>
+                        </ol>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-[10px] uppercase text-slate-500 mb-1 block">Connection String (Postgres)</label>
+                      <input
+                        type="password"
+                        placeholder="postgres://user:pass@ep-host.region.aws.neon.tech/neondb"
+                        className="w-full bg-[#1a202e] border border-slate-700 rounded-lg p-2 text-sm text-white focus:border-emerald-500 outline-none"
+                        value={neoConfig.apiKey}
+                        onChange={(e) => setNeoConfig({ ...neoConfig, apiKey: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] uppercase text-slate-500 mb-1 block">Vercel Deployment URL</label>
+                      <input
+                        type="text"
+                        placeholder="https://tu-app.vercel.app"
+                        className="w-full bg-[#1a202e] border border-slate-700 rounded-lg p-2 text-sm text-white focus:border-emerald-500 outline-none"
+                        value={neoConfig.endpoint}
+                        onChange={(e) => setNeoConfig({ ...neoConfig, endpoint: e.target.value })}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between pt-2">
+                      <div className="flex items-center space-x-2">
+                        <div className={`w-2 h-2 rounded-full ${neoConfig.status === 'connected' ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]' : neoConfig.status === 'failed' || neoConfig.status === 'disconnected' ? 'bg-red-500' : 'bg-amber-400'}`}></div>
+                        <span className={`text-[10px] font-bold uppercase ${neoConfig.status === 'connected' ? 'text-emerald-400' : neoConfig.status === 'failed' || neoConfig.status === 'disconnected' ? 'text-red-500' : 'text-amber-400'}`}>
+                          {neoConfig.status === 'connected' ? 'Conexión Activa' : neoConfig.status === 'failed' ? 'Error de Conexión' : neoConfig.status === 'disconnected' ? 'Desconectada' : 'Conectando...'}
+                        </span>
+                      </div>
+                      <button
+                        onClick={neoConfig.status === 'connected'
+                          ? () => setNeoConfig(prev => ({ ...prev, status: 'disconnected' }))
+                          : saveNeoConfig}
+                        className={`text-xs font-bold px-4 py-2 rounded-md transition-all active:scale-95 ${neoConfig.status === 'connected'
+                          ? 'bg-red-600 hover:bg-red-500 text-white'
+                          : 'bg-emerald-500 hover:bg-emerald-400 text-slate-900'
+                          }`}
+                      >
+                        {neoConfig.status === 'connected' ? 'Desconectar' : 'Conectar'}
+                      </button>
+                    </div>
+                  </div>
                 </div>
 
-                {/* Simple Post Form */}
-                <div className="mt-6 pt-6 border-t border-slate-700">
-                  <p className="text-[10px] font-bold text-slate-500 uppercase mb-3">Nuevo Comunicado</p>
-                  <div className="space-y-3">
-                    <input
-                      type="text"
-                      placeholder="Título del comunicado"
-                      className="input-field text-xs"
-                      onKeyDown={async (e) => {
-                        if (e.key === 'Enter') {
-                          const input = e.currentTarget;
-                          const title = input.value;
-                          const content = prompt("Contenido del comunicado:");
-                          if (title && content) {
-                            await fetch('/api/posts', {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ title, content })
-                            });
-                            input.value = '';
-                            fetchAdminData();
+                <div className="bg-[#161b2a] p-6 rounded-2xl border border-slate-700 shadow-xl">
+                  <div className="flex items-center space-x-3 mb-4">
+                    <Database className="text-emerald-400 w-6 h-6" />
+                    <h3 className="font-bold text-white">Estadísticas</h3>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-[#1a202e] p-4 rounded-xl border border-slate-700">
+                      <p className="text-[10px] text-slate-500 uppercase">Total Planillas</p>
+                      <p className="text-2xl font-bold text-white">{adminForms.length}</p>
+                    </div>
+                    <div className="bg-[#1a202e] p-4 rounded-xl border border-slate-700">
+                      <p className="text-[10px] text-slate-500 uppercase">Hoy</p>
+                      <p className="text-2xl font-bold text-white">
+                        {adminForms.filter(f => new Date(f.created_at).toDateString() === new Date().toDateString()).length}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Noticias Section */}
+                <div className="bg-[#161b2a] p-6 rounded-2xl border border-slate-700 shadow-xl">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center space-x-3">
+                      <Globe className="text-emerald-400 w-6 h-6" />
+                      <h3 className="font-bold text-white">Noticias / Comunicados</h3>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                    {adminPosts.length === 0 ? (
+                      <p className="text-xs text-slate-500 italic text-center py-4">No hay comunicados recientes.</p>
+                    ) : (
+                      adminPosts.map((post, index) => (
+                        <div key={index} className="bg-[#1a202e] p-4 rounded-xl border border-slate-700 hover:border-emerald-500/30 transition-colors">
+                          <h4 className="font-bold text-white text-sm mb-1">{post.title}</h4>
+                          <p className="text-xs text-slate-400 leading-relaxed">{post.content}</p>
+                          <p className="text-[9px] text-slate-600 mt-2 uppercase font-bold">
+                            {new Date(post.created_at).toLocaleString()}
+                          </p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  {/* Simple Post Form */}
+                  <div className="mt-6 pt-6 border-t border-slate-700">
+                    <p className="text-[10px] font-bold text-slate-500 uppercase mb-3">Nuevo Comunicado</p>
+                    <div className="space-y-3">
+                      <input
+                        type="text"
+                        placeholder="Título del comunicado"
+                        className="input-field text-xs"
+                        onKeyDown={async (e) => {
+                          if (e.key === 'Enter') {
+                            const input = e.currentTarget;
+                            const title = input.value;
+                            const content = prompt("Contenido del comunicado:");
+                            if (title && content) {
+                              await fetch('/api/posts', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ title, content })
+                              });
+                              input.value = '';
+                              fetchAdminData();
+                            }
                           }
-                        }
-                      }}
-                    />
-                    <p className="text-[9px] text-slate-600 italic">Presiona Enter para guardar el título y luego ingresa el contenido.</p>
+                        }}
+                      />
+                      <p className="text-[9px] text-slate-600 italic">Presiona Enter para guardar el título y luego ingresa el contenido.</p>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
 
-            {/* Forms List */}
-            <div className="lg:col-span-2">
-              <div className="bg-[#161b2a] rounded-2xl border border-slate-700 shadow-xl overflow-hidden">
-                <div className="p-6 border-b border-slate-700">
-                  <h3 className="font-bold text-white">Planillas Generadas</h3>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left">
-                    <thead className="bg-[#1a202e] text-[10px] uppercase text-slate-500">
-                      <tr>
-                        <th className="px-6 py-4">Cédula (ID)</th>
-                        <th className="px-6 py-4">Nombre</th>
-                        <th className="px-6 py-4">Teléfono</th>
-                        <th className="px-6 py-4">SHA256</th>
-                        <th className="px-6 py-4 text-right">Acciones</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-800">
-                      {adminForms.map((form) => (
-                        <tr key={form.cedula} className="hover:bg-slate-800/50 transition-colors">
-                          <td className="px-6 py-4 font-mono text-emerald-400 text-xs">{form.cedula}</td>
-                          <td className="px-6 py-4 text-sm text-white">{form.nombre}</td>
-                          <td className="px-6 py-4 text-sm text-slate-400">{form.telefono}</td>
-                          <td className="px-6 py-4 font-mono text-emerald-500/70 text-[10px]" title={form.sha256}>
-                            {form.sha256?.substring(0, 16)}...
-                          </td>
-                          <td className="px-6 py-4 text-right">
-                            <button className="p-2 hover:text-emerald-400 transition-colors">
-                              <ExternalLink className="w-4 h-4" />
-                            </button>
-                          </td>
+              {/* Forms List */}
+              <div className="lg:col-span-2">
+                <div className="bg-[#161b2a] rounded-2xl border border-slate-700 shadow-xl overflow-hidden">
+                  <div className="p-6 border-b border-slate-700">
+                    <h3 className="font-bold text-white">Planillas Generadas</h3>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                      <thead className="bg-[#1a202e] text-[10px] uppercase text-slate-500">
+                        <tr>
+                          <th className="px-6 py-4">Cédula (ID)</th>
+                          <th className="px-6 py-4">Nombre</th>
+                          <th className="px-6 py-4">Teléfono</th>
+                          <th className="px-6 py-4">SHA256</th>
+                          <th className="px-6 py-4 text-right">Acciones</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800">
+                        {adminForms.map((form) => (
+                          <tr key={form.cedula} className="hover:bg-slate-800/50 transition-colors">
+                            <td className="px-6 py-4 font-mono text-emerald-400 text-xs">{form.cedula}</td>
+                            <td className="px-6 py-4 text-sm text-white">{form.nombre}</td>
+                            <td className="px-6 py-4 text-sm text-slate-400">{form.telefono}</td>
+                            <td
+                              className="px-6 py-4 font-mono text-emerald-500/70 text-[10px] cursor-pointer hover:text-emerald-400 transition-colors select-none"
+                              title="Clic para ver SHA256 completo"
+                              onClick={() => setSha256Modal(form.sha256 ?? null)}
+                            >
+                              {form.sha256 ? form.sha256.substring(0, 16) + '...' : '—'}
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                <button className="p-2 hover:text-emerald-400 transition-colors" title="Ver detalles">
+                                  <ExternalLink className="w-4 h-4" />
+                                </button>
+                                <button
+                                  className="p-2 hover:text-red-400 transition-colors text-slate-500"
+                                  title="Eliminar planilla"
+                                  onClick={async () => {
+                                    if (!confirm(`¿Eliminar la planilla de ${form.nombre} (${form.cedula})?`)) return;
+                                    try {
+                                      const res = await fetch(`/api/forms/${form.sha256}`, { method: 'DELETE' });
+                                      if (res.ok) {
+                                        fetchAdminData(); // Refresh from DB to stay synced with Neon
+                                      } else {
+                                        alert('Error al eliminar la planilla.');
+                                      }
+                                    } catch {
+                                      alert('Error de conexión al eliminar.');
+                                    }
+                                  }}
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
+
+        {/* ── SHA256 Full Hash Popup ─────────────────────── */}
+        {sha256Modal && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(6px)' }}
+            onClick={() => setSha256Modal(null)}
+          >
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{
+                background: 'linear-gradient(145deg,#0f172a,#111827)',
+                border: '1px solid rgba(16,185,129,0.35)',
+                borderRadius: '16px',
+                maxWidth: '560px',
+                width: '100%',
+                overflow: 'hidden',
+                boxShadow: '0 24px 60px rgba(0,0,0,0.7)',
+              }}
+            >
+              <div style={{ background: 'linear-gradient(135deg,rgba(16,185,129,0.15),rgba(16,185,129,0.05))', borderBottom: '1px solid rgba(16,185,129,0.2)', padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2.5"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
+                  </div>
+                  <div>
+                    <p style={{ color: '#34d399', fontWeight: 700, fontSize: '13px', margin: 0 }}>Hash SHA-256 Completo</p>
+                    <p style={{ color: '#64748b', fontSize: '11px', margin: '2px 0 0' }}>Identificador único del documento forense</p>
+                  </div>
+                </div>
+                <button onClick={() => setSha256Modal(null)} style={{ color: '#64748b', background: 'none', border: 'none', cursor: 'pointer', fontSize: '20px', lineHeight: 1, padding: '4px' }}>✕</button>
+              </div>
+              <div style={{ padding: '20px' }}>
+                <div style={{ background: 'rgba(16,185,129,0.05)', border: '1px solid rgba(16,185,129,0.15)', borderRadius: '10px', padding: '14px 16px', wordBreak: 'break-all', fontFamily: '"JetBrains Mono",monospace', fontSize: '12px', color: '#34d399', letterSpacing: '0.04em', lineHeight: '1.7' }}>
+                  {sha256Modal}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '16px' }}>
+                  <button
+                    onClick={() => { navigator.clipboard.writeText(sha256Modal ?? ''); }}
+                    style={{ background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '8px', padding: '8px 16px', color: '#34d399', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}
+                  >Copiar</button>
+                  <button
+                    onClick={() => setSha256Modal(null)}
+                    style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '8px', padding: '8px 16px', color: '#94a3b8', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}
+                  >Cerrar</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </>
     );
   }
 
@@ -530,20 +573,40 @@ export default function App() {
 
         /* ── PRINT ─────────────────────────────────── */
         @media print {
-          @page { size: legal; margin: 1.5cm; }
-          body { background: white !important; color: black !important; margin:0; padding:0; }
-          .no-print { display: none !important; }
-          .print-container { width:100%!important; max-width:none!important; padding:0!important; background:transparent!important; box-shadow:none!important; }
-          .form-card { background: transparent!important; border:1px solid #ddd!important; box-shadow:none!important; }
-          .section-title { color:black!important; border-bottom:1px solid #000!important; margin-top:15px!important; }
-          input, select, textarea { border:1px solid #ccc!important; background:transparent!important; color:black!important; padding:4px!important; }
-          .accent-text { color:black!important; font-weight:bold!important; }
-          .signature-box { border:1px dashed black!important; background:#f9f9f9!important; }
-          .logo-container { border:1px solid black!important; background:white!important; }
-          .logo-text { color:black!important; }
-          .footer-note { color:#555!important; }
-          .unique-code-print { display:block!important; color:black!important; font-family:'JetBrains Mono',monospace!important; }
-          .section-badge { background:#eee!important; color:#333!important; border:none!important; }
+          @page { size: legal portrait; margin: 1.5cm; }
+
+          /* Make everything invisible */
+          body { visibility: hidden !important; background: white !important; margin: 0; padding: 0; }
+
+          /* Reveal the print sheet */
+          #print-sheet {
+            display: block !important;
+            visibility: visible !important;
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100% !important;
+            height: auto !important;
+            z-index: 99999 !important;
+            background: white !important;
+            color: black !important;
+            font-family: 'Inter', Arial, sans-serif !important;
+            font-size: 11px !important;
+            line-height: 1.5 !important;
+            padding: 0 !important;
+            box-shadow: none !important;
+          }
+
+          #print-sheet * {
+            visibility: visible !important;
+            background: white !important;
+            background-color: white !important;
+            color: black !important;
+            box-shadow: none !important;
+            border-color: #ccc !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
         }
 
         /* ── SCROLLBAR ─────────────────────────────── */
@@ -987,34 +1050,31 @@ export default function App() {
 
         {/* Action Buttons */}
         <div className="no-print flex flex-col sm:flex-row items-center justify-between gap-4 mt-8 pt-6 border-t border-slate-800/60">
-          <p className="text-[11px] text-slate-500">Guarda en el panel y descarga el PDF automáticamente.</p>
+          <p className="text-[11px] text-slate-500">Abre el gestor de impresión y guarda la acción en la base de datos.</p>
           <button
-            onClick={handleDownload}
-            disabled={isDownloading}
+            onClick={handlePrint}
+            disabled={isPrinting}
             className="btn-print w-full sm:w-auto disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            {isDownloading ? (
+            {isPrinting ? (
               <>
                 <svg className="animate-spin" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>
-                Generando PDF...
+                Generando...
               </>
             ) : (
               <>
-                <Download size={16} strokeWidth={2.5} />
-                Generar y Descargar
+                <Printer size={16} strokeWidth={2.5} />
+                Generar
               </>
             )}
           </button>
         </div>
 
-        {/* Hidden white-background container used ONLY for PDF generation */}
+        {/* Static print document — hidden on screen, shown only when printing */}
         <div
-          ref={pdfRef}
+          id="print-sheet"
           style={{
-            position: 'absolute',
-            left: '-9999px',
-            top: 0,
-            width: '19cm',         // legal width minus margins
+            display: 'none',
             background: '#ffffff',
             color: '#000000',
             fontFamily: 'Inter, Arial, sans-serif',
@@ -1022,7 +1082,6 @@ export default function App() {
             lineHeight: '1.5',
             padding: '0',
           }}
-          aria-hidden="true"
         >
           {/* Logo row */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px', borderBottom: '2px solid #000', paddingBottom: '10px' }}>

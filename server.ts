@@ -181,6 +181,28 @@ async function startServer() {
     res.json(forms);
   });
 
+  app.delete("/api/forms/:sha256", async (req, res) => {
+    const { sha256 } = req.params;
+    try {
+      // Delete from SQLite
+      db.prepare("DELETE FROM forms WHERE sha256 = ?").run(sha256);
+
+      // Delete from Postgres if connected
+      const pool = await getPgPool();
+      if (pool) {
+        try {
+          await pool.query("DELETE FROM forms WHERE sha256 = $1", [sha256]);
+        } catch (err) {
+          console.error("Postgres delete error:", err);
+        }
+      }
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Delete form error:", error);
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
   app.get("/api/posts", async (req, res) => {
     const pool = await getPgPool();
     if (pool) {
