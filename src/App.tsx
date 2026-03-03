@@ -482,7 +482,7 @@ export default function App() {
                                   onClick={async () => {
                                     if (!confirm(`¿Eliminar la planilla de ${form.nombre} (${form.cedula})?`)) return;
                                     try {
-                                      const res = await fetch(`/api/forms/${form.sha256}`, { method: 'DELETE' });
+                                      const res = await fetch(`/api/forms?sha256=${form.sha256}`, { method: 'DELETE' });
                                       if (res.ok) {
                                         fetchAdminData(); // Refresh from DB to stay synced with Neon
                                       } else {

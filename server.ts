@@ -181,8 +181,11 @@ async function startServer() {
     res.json(forms);
   });
 
-  app.delete("/api/forms/:sha256", async (req, res) => {
-    const { sha256 } = req.params;
+  app.delete("/api/forms", async (req, res) => {
+    const sha256 = req.query.sha256 as string;
+    if (!sha256) {
+      return res.status(400).json({ error: 'sha256 query parameter required' });
+    }
     try {
       // Delete from SQLite
       db.prepare("DELETE FROM forms WHERE sha256 = ?").run(sha256);

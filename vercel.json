@@ -1,0 +1,23 @@
+{
+    "buildCommand": "vite build",
+    "outputDirectory": "dist",
+    "framework": "vite",
+    "rewrites": [
+        {
+            "source": "/api/auth/login",
+            "destination": "/api/auth"
+        },
+        {
+            "source": "/api/settings/neo/status",
+            "destination": "/api/neo-status"
+        },
+        {
+            "source": "/api/(.*)",
+            "destination": "/api/$1"
+        },
+        {
+            "source": "/(.*)",
+            "destination": "/index.html"
+        }
+    ]
+}
