@@ -1,3 +1,4 @@
+import 'dotenv/config'; // Load .env before anything else
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import Database from "better-sqlite3";
@@ -79,12 +80,12 @@ let pgPool: pg.Pool | null = null;
 
 const getPgPool = async () => {
   if (pgPool) return pgPool;
-  
+
   const setting = db.prepare("SELECT value FROM settings WHERE key = 'neo_config'").get();
   const config = setting ? JSON.parse(setting.value as string) : null;
-  
+
   let connectionString = process.env.DATABASE_URL;
-  
+
   // If env var is missing or invalid, fallback to UI config
   if (!connectionString || !connectionString.startsWith('postgres')) {
     connectionString = config?.apiKey;
@@ -97,7 +98,7 @@ const getPgPool = async () => {
       ssl: { rejectUnauthorized: false },
       connectionTimeoutMillis: 10000, // 10 second timeout
     });
-    
+
     // Initialize Postgres Schema
     try {
       const client = await pgPool.connect();
@@ -199,10 +200,10 @@ async function startServer() {
 
   app.post("/api/posts", async (req, res) => {
     const { title, content } = req.body;
-    
+
     // Save to SQLite
     db.prepare("INSERT INTO posts (title, content) VALUES (?, ?)").run(title, content);
-    
+
     // Save to Postgres
     const pool = await getPgPool();
     if (pool) {
@@ -219,7 +220,7 @@ async function startServer() {
     try {
       const form = req.body;
       console.log("Incoming form submission:", form.nombre);
-      
+
       // Generate SHA256 hash of the form content
       const hashData = JSON.stringify({
         ...form,
@@ -227,7 +228,7 @@ async function startServer() {
         random: Math.random()
       });
       const id = crypto.createHash('sha256').update(hashData).digest('hex');
-      
+
       // Save to SQLite (Local Cache)
       try {
         const stmt = db.prepare(`

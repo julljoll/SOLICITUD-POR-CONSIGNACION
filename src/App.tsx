@@ -3,9 +3,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useRef, useEffect } from 'react';
-import { Settings, Lock, Database, Globe, ArrowLeft, Trash2, ExternalLink, ShieldCheck } from 'lucide-react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { Settings, Lock, Database, Globe, ArrowLeft, ExternalLink, ShieldCheck, Download } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+
+// html2pdf.js – loaded dynamically to avoid SSR issues
+declare const html2pdf: any;
 
 export default function App() {
   const formRef = useRef<HTMLFormElement>(null);
@@ -14,13 +17,14 @@ export default function App() {
   const [loginData, setLoginData] = useState({ username: '', password: '' });
   const [adminForms, setAdminForms] = useState<any[]>([]);
   const [adminPosts, setAdminPosts] = useState<any[]>([]);
-  const [neoConfig, setNeoConfig] = useState({ 
-    apiKey: 'postgresql://neondb_owner:npg_XsEZ1lTGtKO2@ep-falling-firefly-ai6dlr3t-pooler.c-4.us-east-1.aws.neon.tech/neondb?sslmode=require', 
-    endpoint: 'https://ais-pre-zz47w7ss726okqsjxvcd4x-16027451891.us-east1.run.app', 
-    status: 'connecting' 
+  const [neoConfig, setNeoConfig] = useState({
+    apiKey: 'postgresql://neondb_owner:npg_XsEZ1lTGtKO2@ep-falling-firefly-ai6dlr3t-pooler.c-4.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require',
+    endpoint: 'https://ais-pre-zz47w7ss726okqsjxvcd4x-16027451891.us-east1.run.app',
+    status: 'connecting'
   });
   const [uniqueCode, setUniqueCode] = useState('PENDIENTE_DE_GENERAR');
-  const [isPrinting, setIsPrinting] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const pdfRef = useRef<HTMLDivElement>(null);
 
   const DEFAULT_VALUES = {
     nombre: 'JUAN PÉREZ GARCÍA',
@@ -57,15 +61,6 @@ export default function App() {
     return `${isDefault ? 'text-slate-500 border-slate-600 italic' : 'text-emerald-400 border-emerald-500/30'}`;
   };
 
-  useEffect(() => {
-    if (isPrinting && uniqueCode !== 'PENDIENTE_DE_GENERAR') {
-      const timer = setTimeout(() => {
-        window.print();
-        setIsPrinting(false);
-      }, 500);
-      return () => clearTimeout(timer);
-    }
-  }, [isPrinting, uniqueCode]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
@@ -102,26 +97,66 @@ export default function App() {
     return null;
   };
 
-  const handlePrint = async () => {
-    console.log("Print requested...");
-    // Basic validation
+  const loadHtml2Pdf = (): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      if (typeof html2pdf !== 'undefined') { resolve(); return; }
+      const script = document.createElement('script');
+      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.4/html2pdf.bundle.min.js';
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error('No se pudo cargar html2pdf'));
+      document.head.appendChild(script);
+    });
+  };
+
+  const handleDownload = async () => {
     const requiredFields = ['nombre', 'cedula', 'ciudad', 'telefono', 'marca', 'modelo', 'serial'];
-    const missingFields = requiredFields.filter(field => !formData[field as keyof typeof formData]);
-    
+    const missingFields = requiredFields.filter(f => !formData[f as keyof typeof formData]);
     if (missingFields.length > 0) {
-      console.warn("Missing fields:", missingFields);
-      alert("Por favor rellene todos los campos obligatorios antes de imprimir.");
+      alert('Por favor rellene todos los campos obligatorios antes de descargar.');
       return;
     }
 
-    console.log("Saving form...");
-    const id = await saveForm();
-    if (id) {
-      console.log("Form saved with ID:", id);
-      setUniqueCode(id);
-      setIsPrinting(true);
-    } else {
-      console.error("Form save failed, print aborted.");
+    setIsDownloading(true);
+    try {
+      // 1. Save form to backend & get SHA256 id
+      const id = await saveForm();
+      if (!id) { setIsDownloading(false); return; }
+
+      // 2. Let React re-render with the new uniqueCode (already set inside saveForm)
+      await new Promise(r => setTimeout(r, 300));
+
+      // 3. Load html2pdf lazily
+      await loadHtml2Pdf();
+
+      // 4. Grab the hidden white-bg PDF container
+      const el = pdfRef.current;
+      if (!el) { setIsDownloading(false); return; }
+
+      // 5. Generate & download
+      const cedulaClean = `${formData.cedulaPrefix}-${formData.cedula}`.replace(/[^a-zA-Z0-9-]/g, '');
+      const filename = `solicitud-forense-${cedulaClean}.pdf`;
+
+      await html2pdf()
+        .set({
+          margin: [1.5, 1.5, 1.5, 1.5], // cm: top, left, bottom, right
+          filename,
+          image: { type: 'jpeg', quality: 0.98 },
+          html2canvas: {
+            scale: 2,
+            backgroundColor: '#ffffff',
+            useCORS: true,
+            logging: false,
+          },
+          jsPDF: { unit: 'cm', format: 'legal', orientation: 'portrait' },
+          pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
+        })
+        .from(el)
+        .save();
+    } catch (err) {
+      console.error('PDF generation error:', err);
+      alert('Error al generar el PDF. Intente de nuevo.');
+    } finally {
+      setIsDownloading(false);
     }
   };
 
@@ -195,7 +230,7 @@ export default function App() {
   if (view === 'login') {
     return (
       <div className="min-h-screen bg-[#0a0f1c] flex items-center justify-center p-4">
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className="bg-[#161b2a] p-8 rounded-2xl border border-slate-700 w-full max-w-md shadow-2xl"
@@ -209,26 +244,26 @@ export default function App() {
           <form onSubmit={handleLogin} className="space-y-6">
             <div>
               <label className="text-xs uppercase tracking-widest text-slate-500 mb-2 block">Usuario</label>
-              <input 
-                type="text" 
+              <input
+                type="text"
                 className="w-full bg-[#1a202e] border border-slate-700 rounded-lg p-3 text-white focus:border-emerald-500 outline-none"
                 value={loginData.username}
-                onChange={(e) => setLoginData({...loginData, username: e.target.value})}
+                onChange={(e) => setLoginData({ ...loginData, username: e.target.value })}
               />
             </div>
             <div>
               <label className="text-xs uppercase tracking-widest text-slate-500 mb-2 block">Contraseña</label>
-              <input 
-                type="password" 
+              <input
+                type="password"
                 className="w-full bg-[#1a202e] border border-slate-700 rounded-lg p-3 text-white focus:border-emerald-500 outline-none"
                 value={loginData.password}
-                onChange={(e) => setLoginData({...loginData, password: e.target.value})}
+                onChange={(e) => setLoginData({ ...loginData, password: e.target.value })}
               />
             </div>
             <button className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-bold py-3 rounded-lg transition-all">
               Acceder
             </button>
-            <button 
+            <button
               type="button"
               onClick={() => setView('form')}
               className="w-full text-slate-400 text-sm hover:text-white transition-colors"
@@ -269,7 +304,7 @@ export default function App() {
                   </div>
                   <div className="group relative">
                     <div className="cursor-help text-slate-500 hover:text-emerald-400 transition-colors">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" /></svg>
                     </div>
                     <div className="absolute right-0 top-8 w-64 bg-[#1a202e] border border-slate-700 p-4 rounded-xl shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
                       <p className="text-[10px] text-white font-bold mb-2 uppercase tracking-widest">Instrucciones Neon</p>
@@ -286,22 +321,22 @@ export default function App() {
                 <div className="space-y-4">
                   <div>
                     <label className="text-[10px] uppercase text-slate-500 mb-1 block">Connection String (Postgres)</label>
-                    <input 
-                      type="password" 
+                    <input
+                      type="password"
                       placeholder="postgres://user:pass@ep-host.region.aws.neon.tech/neondb"
                       className="w-full bg-[#1a202e] border border-slate-700 rounded-lg p-2 text-sm text-white focus:border-emerald-500 outline-none"
                       value={neoConfig.apiKey}
-                      onChange={(e) => setNeoConfig({...neoConfig, apiKey: e.target.value})}
+                      onChange={(e) => setNeoConfig({ ...neoConfig, apiKey: e.target.value })}
                     />
                   </div>
                   <div>
                     <label className="text-[10px] uppercase text-slate-500 mb-1 block">Vercel Deployment URL</label>
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       placeholder="https://tu-app.vercel.app"
                       className="w-full bg-[#1a202e] border border-slate-700 rounded-lg p-2 text-sm text-white focus:border-emerald-500 outline-none"
                       value={neoConfig.endpoint}
-                      onChange={(e) => setNeoConfig({...neoConfig, endpoint: e.target.value})}
+                      onChange={(e) => setNeoConfig({ ...neoConfig, endpoint: e.target.value })}
                     />
                   </div>
                   <div className="flex items-center justify-between pt-2">
@@ -311,7 +346,7 @@ export default function App() {
                         {neoConfig.status === 'connected' ? 'Conexión Activa' : neoConfig.status === 'failed' ? 'Error de Conexión' : neoConfig.status === 'disconnected' ? 'Desconectada' : 'Conectando...'}
                       </span>
                     </div>
-                    <button 
+                    <button
                       onClick={saveNeoConfig}
                       className="bg-emerald-500 hover:bg-emerald-400 text-slate-900 text-xs font-bold px-4 py-2 rounded-md transition-all active:scale-95"
                     >
@@ -348,7 +383,7 @@ export default function App() {
                     <h3 className="font-bold text-white">Noticias / Comunicados</h3>
                   </div>
                 </div>
-                
+
                 <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
                   {adminPosts.length === 0 ? (
                     <p className="text-xs text-slate-500 italic text-center py-4">No hay comunicados recientes.</p>
@@ -369,8 +404,8 @@ export default function App() {
                 <div className="mt-6 pt-6 border-t border-slate-700">
                   <p className="text-[10px] font-bold text-slate-500 uppercase mb-3">Nuevo Comunicado</p>
                   <div className="space-y-3">
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       placeholder="Título del comunicado"
                       className="input-field text-xs"
                       onKeyDown={async (e) => {
@@ -441,194 +476,222 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0a0f1c] text-slate-300 p-4 md:p-8 font-sans selection:bg-emerald-500/30">
-      <style dangerouslySetInnerHTML={{ __html: `
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
-        
-        :root {
-          --accent: #00ff88;
-          --bg-dark: #0a0f1c;
-          --card-bg: #161b2a;
-          --border: #2d3748;
-        }
+    <div className="min-h-screen bg-[#080d1a] text-slate-300 font-sans selection:bg-emerald-500/30" style={{ backgroundImage: 'radial-gradient(ellipse at 20% 0%, rgba(16,185,129,0.06) 0%, transparent 60%), radial-gradient(ellipse at 80% 100%, rgba(16,185,129,0.04) 0%, transparent 60%)' }}>
+      <style dangerouslySetInnerHTML={{
+        __html: `
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
 
-        body {
-          font-family: 'Inter', sans-serif;
-        }
+        *, *::before, *::after { box-sizing: border-box; }
 
+        body { font-family: 'Inter', sans-serif; }
+
+        /* ── PRINT ─────────────────────────────────── */
         @media print {
-          @page {
-            size: legal;
-            margin: 1.5cm;
-          }
-          
-          body {
-            background: white !important;
-            color: black !important;
-            margin: 0;
-            padding: 0;
-          }
-
-          .no-print {
-            display: none !important;
-          }
-
-          .print-container {
-            width: 100% !important;
-            max-width: none !important;
-            padding: 0 !important;
-            background: transparent !important;
-            box-shadow: none !important;
-          }
-
-          .section-title {
-            color: black !important;
-            border-bottom: 1px solid #000 !important;
-            margin-top: 15px !important;
-          }
-
-          input, select, textarea {
-            border: 1px solid #ccc !important;
-            background: transparent !important;
-            color: black !important;
-            padding: 4px !important;
-          }
-
-          .accent-text {
-            color: black !important;
-            font-weight: bold !important;
-          }
-
-          .signature-box {
-            border: 1px dashed black !important;
-            background: #f9f9f9 !important;
-          }
-
-          .logo-container {
-            border: 1px solid black !important;
-            background: white !important;
-          }
-
-          .logo-text {
-            color: black !important;
-          }
-          
-          .footer-note {
-            color: #555 !important;
-          }
-
-          .unique-code-print {
-            display: block !important;
-            color: black !important;
-            font-family: 'JetBrains Mono', monospace !important;
-          }
+          @page { size: legal; margin: 1.5cm; }
+          body { background: white !important; color: black !important; margin:0; padding:0; }
+          .no-print { display: none !important; }
+          .print-container { width:100%!important; max-width:none!important; padding:0!important; background:transparent!important; box-shadow:none!important; }
+          .form-card { background: transparent!important; border:1px solid #ddd!important; box-shadow:none!important; }
+          .section-title { color:black!important; border-bottom:1px solid #000!important; margin-top:15px!important; }
+          input, select, textarea { border:1px solid #ccc!important; background:transparent!important; color:black!important; padding:4px!important; }
+          .accent-text { color:black!important; font-weight:bold!important; }
+          .signature-box { border:1px dashed black!important; background:#f9f9f9!important; }
+          .logo-container { border:1px solid black!important; background:white!important; }
+          .logo-text { color:black!important; }
+          .footer-note { color:#555!important; }
+          .unique-code-print { display:block!important; color:black!important; font-family:'JetBrains Mono',monospace!important; }
+          .section-badge { background:#eee!important; color:#333!important; border:none!important; }
         }
 
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 4px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-          background: #1a202e;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: #2d3748;
-          border-radius: 10px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: #10b981;
-        }
+        /* ── SCROLLBAR ─────────────────────────────── */
+        .custom-scrollbar::-webkit-scrollbar { width:4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background:#1a202e; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background:#2d3748; border-radius:10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background:#10b981; }
 
+        /* ── INPUT FIELD ───────────────────────────── */
         .input-field {
-          background: #1a202e;
+          background: rgba(15,23,42,0.8);
           border: 1px solid #2d3748;
-          border-radius: 6px;
-          padding: 10px 12px;
+          border-radius: 8px;
+          padding: 10px 14px;
           width: 100%;
           color: white;
           font-size: 13px;
-          transition: all 0.2s ease;
+          transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+          -webkit-appearance: none;
         }
-
         .input-field::placeholder {
-          color: rgba(255, 255, 255, 0.2);
-          font-style: normal;
-          font-size: 12px;
+          color: rgba(255,255,255,0.18);
           font-weight: 300;
-          letter-spacing: 0.02em;
+          letter-spacing:0.02em;
         }
-
         .input-field:focus {
           outline: none;
           border-color: #10b981;
-          background: #1f2937;
-          box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.1);
+          background: rgba(15,23,42,1);
+          box-shadow: 0 0 0 3px rgba(16,185,129,0.12), 0 0 12px rgba(16,185,129,0.06);
         }
+        .input-field:hover:not(:focus) { border-color: #3d4f63; }
 
+        /* ── LABEL ─────────────────────────────────── */
         .label-text {
           font-size: 10px;
           text-transform: uppercase;
-          letter-spacing: 0.05em;
-          color: #718096;
-          margin-bottom: 4px;
+          letter-spacing: 0.07em;
+          font-weight: 600;
+          color: #64748b;
+          margin-bottom: 6px;
           display: block;
+        }
+
+        /* ── SECTION CARD ──────────────────────────── */
+        .form-card {
+          background: rgba(22,27,42,0.7);
+          border: 1px solid rgba(45,55,72,0.8);
+          border-radius: 14px;
+          padding: 24px;
+          backdrop-filter: blur(8px);
+          transition: border-color 0.25s;
+        }
+        .form-card:hover { border-color: rgba(16,185,129,0.18); }
+
+        /* ── SECTION BADGE ─────────────────────────── */
+        .section-badge {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 22px;
+          height: 22px;
+          border-radius: 50%;
+          background: rgba(16,185,129,0.15);
+          border: 1px solid rgba(16,185,129,0.3);
+          font-size: 10px;
+          font-weight: 700;
+          color: #34d399;
+          flex-shrink:0;
+        }
+
+        /* ── DATE INPUTS ───────────────────────────── */
+        input[type='date']::-webkit-calendar-picker-indicator {
+          filter: invert(0.5) sepia(1) hue-rotate(120deg);
+          cursor: pointer;
+          opacity: 0.7;
+        }
+
+        /* ── CHECKBOX ──────────────────────────────── */
+        .check-card {
+          display: flex;
+          align-items: flex-start;
+          gap: 12px;
+          background: rgba(15,23,42,0.6);
+          border: 1px solid #2d3748;
+          border-radius: 10px;
+          padding: 16px;
+          cursor: pointer;
+          transition: border-color 0.2s, background 0.2s;
+        }
+        .check-card:hover { border-color: rgba(16,185,129,0.45); background: rgba(16,185,129,0.04); }
+        .check-card input[type='checkbox'] { accent-color: #10b981; width:16px; height:16px; margin-top:2px; flex-shrink:0; }
+
+        /* ── PRINT BTN ─────────────────────────────── */
+        .btn-print {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 14px 36px;
+          background: linear-gradient(135deg, #10b981, #059669);
+          color: #0a0f1c;
+          font-weight: 700;
+          font-size: 14px;
+          border-radius: 10px;
+          border: none;
+          cursor: pointer;
+          transition: transform 0.15s, box-shadow 0.15s;
+          box-shadow: 0 4px 20px rgba(16,185,129,0.35);
+          letter-spacing: 0.02em;
+        }
+        .btn-print:hover { transform: translateY(-2px); box-shadow: 0 8px 28px rgba(16,185,129,0.4); }
+        .btn-print:active { transform: translateY(0); }
+
+        /* ── RESPONSIVE HELPERS ────────────────────── */
+        @media (max-width: 639px) {
+          .form-card { padding: 16px; }
+          .date-range-wrap { flex-direction: column; }
+          .date-range-wrap span { text-align:center; }
         }
       `}} />
 
-      <div className="max-w-4xl mx-auto print-container relative">
-        {/* Unique Code Display (Top Left) */}
-        <div className="absolute top-0 left-0 flex flex-col items-start">
-          <div className="bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-md mb-1">
-            <span className="text-[10px] font-bold text-emerald-400 tracking-widest uppercase">ID Planilla</span>
-          </div>
-          <p className="font-mono text-[10px] font-bold text-white unique-code-print opacity-80">
-            SHA256; <span className="text-emerald-400">{uniqueCode}</span>
-          </p>
-        </div>
+      <div className="max-w-4xl mx-auto print-container px-4 py-6 md:px-6 md:py-10">
 
-        {/* Header */}
-        <div className="flex flex-col items-end mb-8">
-          <div className="logo-container border border-slate-700 bg-[#161b2a] p-4 rounded-lg text-right w-64">
-            <h1 className="text-2xl font-bold tracking-tighter logo-text">
-              <span className="text-emerald-400">SHA</span>256<span className="text-slate-100">.US</span>
-            </h1>
-            <p className="text-[10px] text-emerald-500/80 uppercase tracking-widest font-semibold">
-              forensic laboratory operations
+        {/* ── TOP BAR: ID + Logo ── */}
+        <div className="flex items-start justify-between mb-8 gap-4 flex-wrap">
+          {/* SHA256 Badge */}
+          <div className="flex flex-col gap-1">
+            <div className="inline-flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-lg">
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)] animate-pulse" />
+              <span className="text-[10px] font-bold text-emerald-400 tracking-widest uppercase">ID Planilla</span>
+            </div>
+            <p className="font-mono text-[10px] text-slate-500 unique-code-print pl-1">
+              SHA256: <span className="text-emerald-400 font-bold">{uniqueCode}</span>
             </p>
           </div>
-          
-          {/* Admin Button (Below Logo) */}
-          <button 
-            onClick={() => setView('login')}
-            className="mt-4 flex items-center space-x-2 text-[10px] font-bold uppercase tracking-widest text-slate-500 hover:text-emerald-400 transition-colors no-print"
-          >
-            <Settings className="w-3 h-3" />
-            <span>Panel de Control</span>
-          </button>
+          {/* Logo + Admin btn */}
+          <div className="flex flex-col items-end gap-2">
+            <div className="logo-container border border-slate-700/80 bg-[#161b2a] px-5 py-3 rounded-xl text-right" style={{ boxShadow: '0 0 30px rgba(16,185,129,0.06)' }}>
+              <h1 className="text-2xl font-bold tracking-tighter logo-text">
+                <span className="text-emerald-400">SHA</span><span className="text-white">256</span><span className="text-slate-400">.US</span>
+              </h1>
+              <p className="text-[9px] text-emerald-500/70 uppercase tracking-widest font-semibold">Forensic Laboratory Operations</p>
+            </div>
+            <button
+              onClick={() => setView('login')}
+              className="no-print flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-slate-500 hover:text-emerald-400 transition-colors px-1"
+            >
+              <Settings className="w-3 h-3" />
+              <span>Panel de Control</span>
+            </button>
+          </div>
         </div>
 
-        <form ref={formRef} className="space-y-8">
+        <form ref={formRef} className="space-y-5">
           {/* Section I */}
-          <section className="space-y-4">
-            <h2 className="text-emerald-400 font-bold text-sm tracking-wide section-title border-b border-emerald-500/30 pb-1 uppercase">
-              I. Datos del Solicitante y Autorización
-            </h2>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <section className="form-card space-y-5">
+            <div className="flex items-center gap-3 border-b border-emerald-500/20 pb-3">
+              <span className="section-badge">I</span>
+              <h2 className="text-emerald-400 font-bold text-sm tracking-wide section-title uppercase">Datos del Solicitante y Autorización</h2>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="label-text">Nombre Completo</label>
                 <input type="text" name="nombre" placeholder="Ej: Juan Alberto Pérez García" value={formData.nombre} onChange={handleInputChange} className={`input-field ${getInputClass('nombre')}`} />
               </div>
               <div>
                 <label className="label-text">Cédula / Identificación</label>
-                <div className="flex space-x-1">
-                  <select name="cedulaPrefix" value={formData.cedulaPrefix} onChange={handleInputChange} className={`input-field w-16 shrink-0 px-1 text-center font-bold ${getInputClass('cedulaPrefix')}`}>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'stretch' }}>
+                  <select
+                    name="cedulaPrefix"
+                    value={formData.cedulaPrefix}
+                    onChange={handleInputChange}
+                    style={{ width: '60px', flexShrink: 0 }}
+                    className={`input-field text-center font-bold text-base ${getInputClass('cedulaPrefix')}`}
+                  >
                     <option value="V">V</option>
                     <option value="E">E</option>
                     <option value="J">J</option>
                     <option value="G">G</option>
                     <option value="P">P</option>
                   </select>
-                  <input type="text" name="cedula" placeholder="12.345.678" value={formData.cedula} onChange={handleInputChange} className={`input-field flex-1 text-xl font-bold tracking-widest ${getInputClass('cedula')}`} />
+                  <input
+                    type="text"
+                    name="cedula"
+                    placeholder="12.345.678"
+                    value={formData.cedula}
+                    onChange={handleInputChange}
+                    style={{ flex: 1, minWidth: 0 }}
+                    className={`input-field font-bold tracking-wider ${getInputClass('cedula')}`}
+                  />
                 </div>
               </div>
               <div>
@@ -637,8 +700,14 @@ export default function App() {
               </div>
               <div>
                 <label className="label-text">Teléfono</label>
-                <div className="flex space-x-1">
-                  <select name="telefonoCarrier" value={formData.telefonoCarrier} onChange={handleInputChange} className={`input-field w-22 shrink-0 px-1 text-center font-bold ${getInputClass('telefonoCarrier')}`}>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'stretch' }}>
+                  <select
+                    name="telefonoCarrier"
+                    value={formData.telefonoCarrier}
+                    onChange={handleInputChange}
+                    style={{ width: '76px', flexShrink: 0 }}
+                    className={`input-field text-center font-bold ${getInputClass('telefonoCarrier')}`}
+                  >
                     <option value="0414">0414</option>
                     <option value="0424">0424</option>
                     <option value="0412">0412</option>
@@ -646,28 +715,36 @@ export default function App() {
                     <option value="0426">0426</option>
                     <option value="0212">0212</option>
                   </select>
-                  <input type="text" name="telefono" placeholder="0000000" value={formData.telefono} onChange={handleInputChange} className={`input-field flex-1 text-xl font-bold tracking-widest ${getInputClass('telefono')}`} />
+                  <input
+                    type="text"
+                    name="telefono"
+                    placeholder="0000000"
+                    value={formData.telefono}
+                    onChange={handleInputChange}
+                    style={{ flex: 1, minWidth: 0 }}
+                    className={`input-field font-bold tracking-wider ${getInputClass('telefono')}`}
+                  />
                 </div>
               </div>
-            </div>
-            
-            <div>
-              <label className="label-text">Dirección Completa</label>
-              <input type="text" name="direccion" placeholder="Av. Principal, Edif. Centro, Piso 2, Apto 24" value={formData.direccion} onChange={handleInputChange} className={`input-field ${getInputClass('direccion')}`} />
+              <div className="sm:col-span-2">
+                <label className="label-text">Dirección Completa</label>
+                <input type="text" name="direccion" placeholder="Av. Principal, Edif. Centro, Piso 2, Apto 24" value={formData.direccion} onChange={handleInputChange} className={`input-field ${getInputClass('direccion')}`} />
+              </div>
             </div>
 
-            <div className="bg-emerald-500/5 border-l-2 border-emerald-500 p-4 rounded-r-md text-xs leading-relaxed italic text-slate-400">
-              "Yo, el arriba identificado, en pleno uso de mis facultades mentales <span className="text-emerald-400 font-bold accent-text">AUTORIZO EXPRESA Y VOLUNTARIAMENTE</span> su acceso, exploración y extracción forense de datos. Para ello, renuncio temporalmente a mi derecho al secreto de las comunicaciones <span className="text-emerald-500/80">(Arts. 48 y 60 de la Constitución de la República Bolivariana de Venezuela)</span>, única y exclusivamente a favor de los expertos designados y para los fines técnicos aquí descritos."
+            <div className="bg-emerald-500/5 border-l-2 border-emerald-500 p-4 rounded-r-lg text-xs leading-relaxed italic text-slate-400">
+              "Yo, el arriba identificado, en pleno uso de mis facultades mentales <span className="text-emerald-400 font-semibold not-italic accent-text">AUTORIZO EXPRESA Y VOLUNTARIAMENTE</span> su acceso, exploración y extracción forense de datos. Para ello, renuncio temporalmente a mi derecho al secreto de las comunicaciones <span className="text-emerald-500/70">(Arts. 48 y 60 de la Constitución de la República Bolivariana de Venezuela)</span>, única y exclusivamente a favor de los expertos designados y para los fines técnicos aquí descritos."
             </div>
           </section>
 
           {/* Section II */}
-          <section className="space-y-4">
-            <h2 className="text-emerald-400 font-bold text-sm tracking-wide section-title border-b border-emerald-500/30 pb-1 uppercase">
-              II. Descripción del Dispositivo (Dispositivo Matriz)
-            </h2>
-            <p className="text-[11px] font-semibold text-slate-100">• Hago entrega material voluntaria del siguiente equipo bajo la figura de Obtención por Consignación.</p>
-            
+          <section className="form-card space-y-5">
+            <div className="flex items-center gap-3 border-b border-emerald-500/20 pb-3">
+              <span className="section-badge">II</span>
+              <h2 className="text-emerald-400 font-bold text-sm tracking-wide section-title uppercase">Descripción del Dispositivo (Dispositivo Matriz)</h2>
+            </div>
+            <p className="text-[11px] font-medium text-slate-300 flex items-center gap-2"><span className="text-emerald-500">›</span> Hago entrega material voluntaria del siguiente equipo bajo la figura de Obtención por Consignación.</p>
+
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="label-text">Marca</label>
@@ -714,21 +791,17 @@ export default function App() {
           </section>
 
           {/* Section III */}
-          <section className="space-y-4">
-            <h2 className="text-emerald-400 font-bold text-sm tracking-wide section-title border-b border-emerald-500/30 pb-1 uppercase">
-              III. Alcance de la Extracción y Análisis
-            </h2>
-            <p className="text-[11px] font-semibold text-slate-100">• Solicito la aplicación de herramientas forenses para la extracción lógica/física de "Mensajes de Datos", delimitado estrictamente a:</p>
-            
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="md:col-span-1">
+          <section className="form-card space-y-5">
+            <div className="flex items-center gap-3 border-b border-emerald-500/20 pb-3">
+              <span className="section-badge">III</span>
+              <h2 className="text-emerald-400 font-bold text-sm tracking-wide section-title uppercase">Alcance de la Extracción y Análisis</h2>
+            </div>
+            <p className="text-[11px] font-medium text-slate-300 flex items-center gap-2"><span className="text-emerald-500">›</span> Solicito la aplicación de herramientas forenses para la extracción lógica/física de "Mensajes de Datos", delimitado estrictamente a:</p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div>
                 <label className="label-text">Aplicación Objeto</label>
-                <select 
-                  name="aplicacionObjeto" 
-                  value={formData.aplicacionObjeto} 
-                  onChange={handleInputChange} 
-                  className="input-field text-emerald-400 font-bold appearance-none bg-[url('data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%23718096%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E')] bg-[length:1.2em] bg-[right_0.5rem_center] bg-no-repeat"
-                >
+                <select name="aplicacionObjeto" value={formData.aplicacionObjeto} onChange={handleInputChange} className="input-field text-emerald-400 font-bold">
                   <option value="WhatsApp">WhatsApp</option>
                   <option value="Cámara">Cámara</option>
                   <option value="Documentos">Documentos</option>
@@ -739,82 +812,190 @@ export default function App() {
                 <label className="label-text">Número de Contacto Específico</label>
                 <input type="text" name="contactoEspecifico" placeholder="Ej: 0424-0000000" value={formData.contactoEspecifico} onChange={handleInputChange} className={`input-field ${getInputClass('contactoEspecifico')}`} />
               </div>
-              <div>
-                <label className="label-text">Rango de Fechas (Desde - Hasta)</label>
-                <div className="flex items-center space-x-2">
-                  <input type="date" name="fechaDesde" value={formData.fechaDesde} onChange={handleInputChange} className={`input-field text-xs ${getInputClass('fechaDesde')}`} />
-                  <span className="text-xs">al</span>
-                  <input type="date" name="fechaHasta" value={formData.fechaHasta} onChange={handleInputChange} className={`input-field text-xs ${getInputClass('fechaHasta')}`} />
+              <div className="sm:col-span-2 lg:col-span-1">
+                <label className="label-text">Rango de Fechas (Desde – Hasta)</label>
+                <div className="date-range-wrap flex items-center gap-2">
+                  <input type="date" name="fechaDesde" value={formData.fechaDesde} onChange={handleInputChange} className={`input-field text-xs flex-1 min-w-0 ${getInputClass('fechaDesde')}`} />
+                  <span className="text-slate-500 text-xs shrink-0">al</span>
+                  <input type="date" name="fechaHasta" value={formData.fechaHasta} onChange={handleInputChange} className={`input-field text-xs flex-1 min-w-0 ${getInputClass('fechaHasta')}`} />
                 </div>
               </div>
             </div>
           </section>
 
           {/* Section IV */}
-          <section className="space-y-4">
-            <h2 className="text-emerald-400 font-bold text-sm tracking-wide section-title border-b border-emerald-500/30 pb-1 uppercase">
-              IV. Requerimientos Técnicos y de Preservación
-            </h2>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <label className="flex items-start space-x-3 bg-[#161b2a] p-4 rounded-lg border border-slate-700 cursor-pointer hover:border-emerald-500/50 transition-colors">
-                <input type="checkbox" name="aislamiento" checked={formData.aislamiento} onChange={handleInputChange} className="mt-1 w-4 h-4 accent-emerald-500" />
+          <section className="form-card space-y-5">
+            <div className="flex items-center gap-3 border-b border-emerald-500/20 pb-3">
+              <span className="section-badge">IV</span>
+              <h2 className="text-emerald-400 font-bold text-sm tracking-wide section-title uppercase">Requerimientos Técnicos y de Preservación</h2>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <label className="check-card">
+                <input type="checkbox" name="aislamiento" checked={formData.aislamiento} onChange={handleInputChange} />
                 <div>
-                  <p className="text-xs font-bold text-slate-100">Aislamiento de Señal (Modo Avión/Bolsa Faraday)</p>
-                  <p className="text-[10px] text-slate-400">Asegura que el dispositivo no reciba datos remotos durante el análisis.</p>
+                  <p className="text-xs font-bold text-slate-100 mb-0.5">Aislamiento de Señal</p>
+                  <p className="text-[10px] text-slate-400">Modo Avión / Bolsa Faraday. Impide recepción remota durante el análisis.</p>
                 </div>
               </label>
-              
-              <label className="flex items-start space-x-3 bg-[#161b2a] p-4 rounded-lg border border-slate-700 cursor-pointer hover:border-emerald-500/50 transition-colors">
-                <input type="checkbox" name="calculoHash" checked={formData.calculoHash} onChange={handleInputChange} className="mt-1 w-4 h-4 accent-emerald-500" />
+              <label className="check-card">
+                <input type="checkbox" name="calculoHash" checked={formData.calculoHash} onChange={handleInputChange} />
                 <div>
-                  <p className="text-xs font-bold text-slate-100">Cálculo de Algoritmos de Integridad (HASH)</p>
-                  <p className="text-[10px] text-slate-400">Generación de huella digital SHA-256 o MD5 para cadena de custodia.</p>
+                  <p className="text-xs font-bold text-slate-100 mb-0.5">Cálculo de Hash de Integridad</p>
+                  <p className="text-[10px] text-slate-400">Algoritmo SHA-256 / MD5 para cadena de custodia forense.</p>
                 </div>
               </label>
             </div>
           </section>
 
           {/* Signatures */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-8">
-            <div className="text-center space-y-4">
-              <div className="signature-box border border-dashed border-slate-600 h-32 rounded-lg bg-slate-800/20 flex items-center justify-center">
-                <span className="text-[10px] text-slate-600 uppercase tracking-widest">Firma y Huella (Dactilar)</span>
+          <div className="form-card">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+              <div className="text-center space-y-3">
+                <div className="signature-box border border-dashed border-slate-600/70 h-28 rounded-xl bg-slate-900/30 flex items-center justify-center">
+                  <span className="text-[10px] text-slate-600 uppercase tracking-widest">Firma y Huella Dactilar</span>
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">El Solicitante</p>
+                  <p className="text-xs text-slate-300 uppercase font-medium mt-0.5">{formData.nombre}</p>
+                </div>
               </div>
-              <div>
-                <p className="text-xs font-bold text-slate-100 uppercase">El Solicitante</p>
-                <p className="text-[10px] text-slate-400 uppercase tracking-tighter">{formData.nombre}</p>
-              </div>
-            </div>
-            
-            <div className="text-center space-y-4">
-              <div className="signature-box border border-dashed border-slate-600 h-32 rounded-lg bg-slate-800/20 flex items-center justify-center">
-                <span className="text-[10px] text-slate-600 uppercase tracking-widest">Sello y Firma Institucional</span>
-              </div>
-              <div>
-                <p className="text-xs font-bold text-slate-100 uppercase">Expertos Forenses</p>
-                <p className="text-[10px] text-slate-400 uppercase tracking-tighter">Área de Análisis de Telefonía Móvil</p>
+              <div className="text-center space-y-3">
+                <div className="signature-box border border-dashed border-slate-600/70 h-28 rounded-xl bg-slate-900/30 flex items-center justify-center">
+                  <span className="text-[10px] text-slate-600 uppercase tracking-widest">Sello y Firma Institucional</span>
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Expertos Forenses</p>
+                  <p className="text-xs text-slate-300 uppercase font-medium mt-0.5">Área de Análisis de Telefonía Móvil</p>
+                </div>
               </div>
             </div>
           </div>
 
           {/* Footer Note */}
-          <div className="pt-8 border-t border-slate-800">
-            <p className="text-[10px] text-slate-500 italic footer-note">
+          <div className="px-1 pt-2">
+            <p className="text-[10px] text-slate-600 italic footer-note">
               Nota: Este documento tiene validez legal al ser consignado ante el Ministerio Público o Tribunales competentes.
             </p>
           </div>
         </form>
 
         {/* Action Buttons */}
-        <div className="flex flex-col md:flex-row justify-end space-y-4 md:space-y-0 md:space-x-4 mt-12 no-print">
-          <button 
-            onClick={handlePrint}
-            className="flex items-center justify-center space-x-2 px-12 py-3 bg-emerald-500 hover:bg-emerald-400 text-slate-900 rounded-lg font-bold transition-all shadow-lg shadow-emerald-500/20"
+        <div className="no-print flex flex-col sm:flex-row items-center justify-between gap-4 mt-8 pt-6 border-t border-slate-800/60">
+          <p className="text-[11px] text-slate-500">Guarda en el panel y descarga el PDF automáticamente.</p>
+          <button
+            onClick={handleDownload}
+            disabled={isDownloading}
+            className="btn-print w-full sm:w-auto disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect width="12" height="8" x="6" y="14"/></svg>
-            <span>Imprimir</span>
+            {isDownloading ? (
+              <>
+                <svg className="animate-spin" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>
+                Generando PDF...
+              </>
+            ) : (
+              <>
+                <Download size={16} strokeWidth={2.5} />
+                Generar y Descargar
+              </>
+            )}
           </button>
+        </div>
+
+        {/* Hidden white-background container used ONLY for PDF generation */}
+        <div
+          ref={pdfRef}
+          style={{
+            position: 'absolute',
+            left: '-9999px',
+            top: 0,
+            width: '19cm',         // legal width minus margins
+            background: '#ffffff',
+            color: '#000000',
+            fontFamily: 'Inter, Arial, sans-serif',
+            fontSize: '11px',
+            lineHeight: '1.5',
+            padding: '0',
+          }}
+          aria-hidden="true"
+        >
+          {/* Logo row */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px', borderBottom: '2px solid #000', paddingBottom: '10px' }}>
+            <div>
+              <div style={{ fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#555', marginBottom: '4px' }}>ID PLANILLA</div>
+              <div style={{ fontFamily: 'monospace', fontSize: '8px', color: '#333' }}>SHA256: <strong>{uniqueCode}</strong></div>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: '20px', fontWeight: 700, letterSpacing: '-0.04em' }}>SHA256.US</div>
+              <div style={{ fontSize: '7px', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#555' }}>Forensic Laboratory Operations</div>
+            </div>
+          </div>
+
+          {/* Section helper */}
+          {([
+            ['I. DATOS DEL SOLICITANTE Y AUTORIZACIÓN', [
+              ['NOMBRE COMPLETO', formData.nombre],
+              ['CÉDULA', `${formData.cedulaPrefix}-${formData.cedula}`],
+              ['CIUDAD', formData.ciudad],
+              ['TELÉFONO', `${formData.telefonoCarrier}-${formData.telefono}`],
+              ['DIRECCIÓN', formData.direccion],
+            ]],
+            ['II. DESCRIPCIÓN DEL DISPOSITIVO (DISPOSITIVO MATRIZ)', [
+              ['MARCA', formData.marca],
+              ['MODELO', formData.modelo],
+              ['COLOR', formData.color],
+              ['SERIAL DE FÁBRICA', formData.serial],
+              ['IMEI 1', formData.imei1],
+              ['IMEI 2', formData.imei2],
+              ['Nº TELEFÓNICO / OPERADORA', formData.numTelefónico],
+              ['CÓDIGO DE DESBLOQUEO', formData.codigoDesbloqueo],
+              ['ESTADO FÍSICO', formData.estadoFisico],
+            ]],
+            ['III. ALCANCE DE LA EXTRACCIÓN Y ANÁLISIS', [
+              ['APLICACIÓN OBJETO', formData.aplicacionObjeto],
+              ['CONTACTO ESPECÍFICO', formData.contactoEspecifico],
+              ['RANGO DE FECHAS', `${formData.fechaDesde} — ${formData.fechaHasta}`],
+            ]],
+            ['IV. REQUERIMIENTOS TÉCNICOS Y DE PRESERVACIÓN', [
+              ['AISLAMIENTO DE SEÑAL (MODO AVIÓN/FARADAY)', formData.aislamiento ? 'SÍ' : 'NO'],
+              ['CÁLCULO DE HASH (SHA-256/MD5)', formData.calculoHash ? 'SÍ' : 'NO'],
+            ]],
+          ] as [string, [string, string][]][]).map(([title, fields]) => (
+            <div key={title} style={{ marginBottom: '14px', pageBreakInside: 'avoid' }}>
+              <div style={{ fontWeight: 700, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.06em', borderBottom: '1px solid #999', paddingBottom: '4px', marginBottom: '8px', color: '#111' }}>{title}</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px' }}>
+                {fields.map(([label, val]) => (
+                  <div key={label} style={{ borderBottom: '1px solid #e5e7eb', paddingBottom: '4px' }}>
+                    <div style={{ fontSize: '7.5px', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#666', marginBottom: '2px' }}>{label}</div>
+                    <div style={{ fontWeight: 600, color: '#000', wordBreak: 'break-word' }}>{val}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+
+          {/* Authorization quote */}
+          <div style={{ borderLeft: '3px solid #10b981', padding: '8px 12px', background: '#f0fdf4', marginBottom: '16px', color: '#333', fontStyle: 'italic', fontSize: '9.5px', lineHeight: '1.5' }}>
+            "Yo, el arriba identificado, en pleno uso de mis facultades mentales <strong style={{ fontStyle: 'normal' }}>AUTORIZO EXPRESA Y VOLUNTARIAMENTE</strong> su acceso, exploración y extracción forense de datos. Para ello, renuncio temporalmente a mi derecho al secreto de las comunicaciones (Arts. 48 y 60 de la Constitución de la República Bolivariana de Venezuela), única y exclusivamente a favor de los expertos designados y para los fines técnicos aquí descritos."
+          </div>
+
+          {/* Signatures */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginTop: '20px' }}>
+            {[['El Solicitante', formData.nombre], ['Expertos Forenses', 'Área de Análisis de Telefonía Móvil']].map(([role, name]) => (
+              <div key={role} style={{ textAlign: 'center' }}>
+                <div style={{ border: '1px dashed #999', height: '80px', background: '#fafafa', marginBottom: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <span style={{ fontSize: '8px', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{role === 'El Solicitante' ? 'Firma y Huella Dactilar' : 'Sello y Firma Institucional'}</span>
+                </div>
+                <div style={{ fontWeight: 700, fontSize: '9px', textTransform: 'uppercase', color: '#333' }}>{role}</div>
+                <div style={{ fontSize: '9px', color: '#555', textTransform: 'uppercase', marginTop: '2px' }}>{name}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Footer */}
+          <div style={{ marginTop: '16px', borderTop: '1px solid #ddd', paddingTop: '8px' }}>
+            <p style={{ fontSize: '8px', color: '#888', fontStyle: 'italic' }}>Nota: Este documento tiene validez legal al ser consignado ante el Ministerio Público o Tribunales competentes.</p>
+          </div>
         </div>
       </div>
     </div>
