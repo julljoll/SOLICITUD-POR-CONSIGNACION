@@ -1,6 +1,6 @@
 #!/bin/bash
 set -e
-PKG_NAME="forense-android"
+PKG_NAME="solicitud-por-consignacion"
 VERSION="1.0.0"
 DEST="dist/${PKG_NAME}_${VERSION}_amd64"
 

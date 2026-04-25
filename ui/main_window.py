@@ -5,7 +5,7 @@ from ui.sidebar import Sidebar
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Sistema Forense Android")
+        self.setWindowTitle("Solicitud por Consignación")
         self.resize(1200, 800)
         self._init_ui()
 
