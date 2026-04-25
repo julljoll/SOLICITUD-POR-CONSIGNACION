@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Sistema Forense Android
+Comment=Gestión del procedimiento forense informático de dispositivos Android
+Exec=sistema-forense-android
+Icon=sistema-forense-android
+Terminal=false
+Type=Application
+Categories=Science;Utility;
+Keywords=forense;android;investigacion;custodia;
