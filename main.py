@@ -1,7 +1,7 @@
 import sys
 import logging
 from PyQt6.QtWidgets import QApplication
-from ui.main_window import MainWindow
+from ui.formulario_caso import FormularioCaso
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -15,7 +15,7 @@ def main():
     except FileNotFoundError:
         logging.warning("Archivo de estilos 'assets/style.qss' no encontrado.")
         
-    window = MainWindow()
+    window = FormularioCaso()
     window.show()
     sys.exit(app.exec())
 
