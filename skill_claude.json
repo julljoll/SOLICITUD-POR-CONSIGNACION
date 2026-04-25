@@ -1,0 +1,451 @@
+{
+  "skill": {
+    "name": "forense-android-dashboard",
+    "version": "1.0.0",
+    "description": "Construye y gestiona una aplicación de escritorio Python/PyQt6 para el proceso forense informático de dispositivos Android bajo el marco legal venezolano.",
+    "language": "es",
+    "target_os": "Ubuntu 24.04 LTS",
+    "target_python": ">=3.11",
+    "output_artifact": "paquete .deb instalable"
+  },
+
+  "contexto_legal": {
+    "jurisdiccion": "República Bolivariana de Venezuela",
+    "leyes_aplicables": [
+      "Constitución Nacional — due process y privacidad comunicaciones",
+      "COPP — licitud de prueba y cadena de custodia",
+      "Ley Especial contra Delitos Informáticos",
+      "Ley de Infogobierno",
+      "Ley sobre Mensajes de Datos y Firmas Electrónicas (Art. 4, 7, 8)"
+    ],
+    "estandares_tecnicos": [
+      "ISO/IEC 27037:2012 — identificación, adquisición, preservación",
+      "ISO/IEC 27042:2015 — análisis e interpretación",
+      "NIST SP 800-101r1 — forensia de dispositivos móviles"
+    ],
+    "instrumentos_procedimentales": [
+      "Manual Único de Cadena de Custodia — PRCC",
+      "Compendio de Protocolos de Investigación Penal"
+    ]
+  },
+
+  "stack_tecnologico": {
+    "gui_framework": "PyQt6",
+    "base_datos": "SQLite (stdlib sqlite3)",
+    "generacion_pdf": "reportlab",
+    "hashing": "hashlib (stdlib) — SHA-256 y MD5",
+    "procesos_externos": "QProcess (no blocking)",
+    "estilos": "Qt StyleSheets (.qss) — tema oscuro",
+    "empaquetado": "dpkg-deb (Debian packaging)",
+    "herramientas_forenses_integradas": ["Andriller", "ALEAPP"]
+  },
+
+  "proceso_forense": {
+    "fases": [
+      {
+        "numero": 1,
+        "nombre": "Obtención y Adquisición en Sitio",
+        "pasos": [
+          {
+            "numero": 1,
+            "id": "aislamiento",
+            "titulo": "Aislamiento y Fijación",
+            "descripcion": "Documentar el estado físico del dispositivo, modo de aislamiento (Modo Avión/Bolsa Faraday), IMEI, SIM, fotografías",
+            "tipo_ui": "formulario",
+            "campos_obligatorios": [
+              "numero_caso", "funcionario", "modo_aislamiento",
+              "marca", "modelo", "imei", "estado_fisico"
+            ],
+            "acciones": ["guardar_sqlite", "imprimir_acta"],
+            "desbloquea_paso": 2
+          },
+          {
+            "numero": 2,
+            "id": "adquisicion",
+            "titulo": "Adquisición con Andriller",
+            "descripcion": "Lanzar Andriller en modo solo lectura, calcular y verificar hashes SHA-256 origen vs copia",
+            "tipo_ui": "lanzador_proceso",
+            "herramienta_externa": "andriller",
+            "proceso_qt": "QProcess",
+            "campos_obligatorios": [
+              "ruta_salida", "tipo_extraccion",
+              "hash_origen_sha256", "hash_copia_sha256", "hashes_coinciden"
+            ],
+            "alertas": {
+              "hash_mismatch": "ALERTA CRÍTICA: Hashes no coinciden — evidencia comprometida"
+            },
+            "acciones": ["iniciar_andriller", "calcular_hashes", "guardar_sqlite"],
+            "desbloquea_paso": 3
+          },
+          {
+            "numero": 3,
+            "id": "prcc",
+            "titulo": "Cadena de Custodia (PRCC)",
+            "descripcion": "Llenar la Planilla de Registro de Cadena de Custodia con firma y datos del funcionario",
+            "tipo_ui": "formulario_imprimible",
+            "campos_obligatorios": [
+              "numero_prcc", "funcionario_colector", "cargo", "organo",
+              "tipo_embalaje", "numero_precinto", "nombre_firmante"
+            ],
+            "campos_auto_poblados": ["marca", "modelo", "imei", "hash_sha256", "hash_md5"],
+            "acciones": ["guardar_sqlite", "imprimir_prcc", "exportar_pdf"],
+            "desbloquea_paso": 4
+          }
+        ]
+      },
+      {
+        "numero": 2,
+        "nombre": "Peritaje y Análisis en Laboratorio",
+        "pasos": [
+          {
+            "numero": 4,
+            "id": "recepcion_laboratorio",
+            "titulo": "Recepción y Verificación de Integridad",
+            "descripcion": "Verificar precintos, recalcular hash de la imagen forense y comparar con hash original de la PRCC",
+            "tipo_ui": "formulario_verificacion",
+            "campos_obligatorios": [
+              "perito_receptor", "estado_precintos", "hash_recalculado"
+            ],
+            "campos_auto_poblados": ["hash_original_prcc", "numero_prcc"],
+            "alertas": {
+              "hash_mismatch": "ALERTA CRÍTICA: Hash recalculado no coincide — bloquear avance y documentar"
+            },
+            "acciones": ["recalcular_hash", "confirmar_recepcion", "guardar_sqlite"],
+            "desbloquea_paso": 5
+          },
+          {
+            "numero": 5,
+            "id": "analisis_aleapp",
+            "titulo": "Análisis con ALEAPP",
+            "descripcion": "Parsear bases de datos SQLite y archivos Protobuf. Reconstruir timelines de WhatsApp, audios, imágenes y eventos",
+            "tipo_ui": "lanzador_proceso",
+            "herramienta_externa": "aleapp",
+            "proceso_qt": "QProcess",
+            "campos_obligatorios": ["ruta_imagen_forense", "ruta_salida_aleapp"],
+            "campos_auto_poblados": ["ruta_imagen_forense"],
+            "acciones": [
+              "iniciar_aleapp", "ver_reporte_html",
+              "ver_timeline", "guardar_sqlite"
+            ],
+            "nota_timezone": "Cotejar UTC con hora local Venezuela (UTC-4)",
+            "desbloquea_paso": 6
+          },
+          {
+            "numero": 6,
+            "id": "evidencia_derivada",
+            "titulo": "Evidencia Derivada",
+            "descripcion": "Generar nueva PRCC y Acta de Obtención por Derivación para archivos relevantes encontrados en análisis ALEAPP",
+            "tipo_ui": "selector_archivos_con_formulario",
+            "campos_por_archivo": [
+              "nombre_nativo", "ruta_origen", "tamanio_bytes",
+              "hash_sha256", "fecha_creacion_metadata",
+              "fecha_modificacion_metadata", "fecha_acceso_metadata",
+              "relevancia_forense"
+            ],
+            "acciones": [
+              "seleccionar_archivos_aleapp", "calcular_hashes_derivados",
+              "generar_prcc_derivada", "imprimir_acta_derivacion"
+            ],
+            "desbloquea_paso": 7
+          }
+        ]
+      },
+      {
+        "numero": 3,
+        "nombre": "Emisión del Dictamen Pericial",
+        "pasos": [
+          {
+            "numero": 7,
+            "id": "fundamentacion_juridica",
+            "titulo": "Fundamentación Jurídica",
+            "descripcion": "Seleccionar y documentar el marco legal aplicable y los delitos tipificados",
+            "tipo_ui": "checklist_editable",
+            "items_pre_cargados": [
+              "Art. 4 y 8 Ley Mensajes de Datos — eficacia probatoria",
+              "COPP — régimen de licitud de prueba",
+              "Ley Especial Delitos Informáticos",
+              "ISO/IEC 27037:2012",
+              "ISO/IEC 27042:2015",
+              "NIST SP 800-101r1"
+            ],
+            "acciones": ["guardar_fundamentos", "seleccionar_delitos"],
+            "desbloquea_paso": 8
+          },
+          {
+            "numero": 8,
+            "id": "dictamen_pericial",
+            "titulo": "Dictamen Pericial",
+            "descripcion": "Informe técnico auto-poblado con los 6 acápites del Compendio Nacional. Incluye tabla de hallazgos completa",
+            "tipo_ui": "informe_auto_poblado_imprimible",
+            "secciones_informe": [
+              {
+                "numero": 1,
+                "titulo": "Motivo",
+                "tipo": "texto_editable",
+                "auto_poblar": false
+              },
+              {
+                "numero": 2,
+                "titulo": "Descripción de la Evidencia",
+                "tipo": "texto_editable",
+                "auto_poblar": true,
+                "fuente": ["dispositivos", "prcc"]
+              },
+              {
+                "numero": 3,
+                "titulo": "Exámenes Practicados",
+                "tipo": "tabla_mas_texto",
+                "auto_poblar": true,
+                "fuente": ["adquisiciones"],
+                "incluye": [
+                  "herramienta", "version", "tipo_extraccion",
+                  "hash_origen_sha256", "hash_copia_sha256"
+                ]
+              },
+              {
+                "numero": 4,
+                "titulo": "Resultados Obtenidos",
+                "tipo": "tabla",
+                "auto_poblar": true,
+                "fuente": ["evidencias_derivadas"],
+                "columnas": [
+                  "nombre_nativo", "fecha_creacion", "fecha_modificacion",
+                  "fecha_acceso", "ruta_ubicacion", "tamanio", "hash_sha256"
+                ]
+              },
+              {
+                "numero": 5,
+                "titulo": "Conclusiones",
+                "tipo": "texto_editable",
+                "auto_poblar": false,
+                "advertencia": "Solo juicio técnico-científico. NO incluir precalificación jurídica."
+              },
+              {
+                "numero": 6,
+                "titulo": "Consumo de Evidencia",
+                "tipo": "radio_mas_texto",
+                "opciones": [
+                  "No se alteró la data original (técnicas de solo lectura)",
+                  "Hubo consumo parcial: [especificar]"
+                ]
+              }
+            ],
+            "campos_firma": ["perito_actuante", "credencial", "fecha_emision"],
+            "acciones": ["guardar_dictamen", "imprimir_dictamen", "exportar_pdf"],
+            "desbloquea_paso": 9
+          },
+          {
+            "numero": 9,
+            "id": "cierre_disposicion",
+            "titulo": "Cierre y Disposición Final",
+            "descripcion": "Actualizar PRCC original en apartado de transferencia. Emitir Acta de Disposición Final si aplica",
+            "tipo_ui": "formulario_cierre",
+            "campos_obligatorios": [
+              "destino_evidencia", "funcionario_receptor", "fecha_entrega"
+            ],
+            "destinos_posibles": [
+              "Área de Resguardo Judicial",
+              "Fiscal del Ministerio Público",
+              "Disposición Final (destrucción autorizada)"
+            ],
+            "acciones": [
+              "actualizar_prcc_transferencia",
+              "imprimir_acta_disposicion_final",
+              "cerrar_caso"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+
+  "trazabilidad": {
+    "descripcion": "Log de auditoría inmutable con hashes encadenados",
+    "tabla_sqlite": "audit_log",
+    "politica": "Solo INSERT — nunca UPDATE ni DELETE",
+    "campos": [
+      "id", "caso_id", "fase", "paso", "accion",
+      "usuario", "fecha_utc", "hash_previo", "hash_actual"
+    ],
+    "algoritmo_encadenamiento": "SHA-256(fase || paso || accion || usuario || fecha || hash_previo)",
+    "ui": "Tabla filtrable por caso/fase/paso con exportación a PDF"
+  },
+
+  "base_datos": {
+    "motor": "SQLite",
+    "archivo": "~/.local/share/forense-android/casos.db",
+    "tablas": [
+      "casos",
+      "dispositivos",
+      "prcc",
+      "adquisiciones",
+      "evidencias_derivadas",
+      "dictamenes",
+      "audit_log"
+    ],
+    "migraciones": "Versionadas en db_manager.py con tabla schema_version"
+  },
+
+  "formularios_imprimibles": [
+    {
+      "id": "acta_obtencion",
+      "titulo": "Acta de Obtención",
+      "paso_origen": 1,
+      "generador": "reportlab",
+      "campos": ["numero_caso", "funcionario", "fecha", "dispositivo", "modo_aislamiento", "estado_fisico"]
+    },
+    {
+      "id": "prcc_principal",
+      "titulo": "Planilla de Registro de Cadena de Custodia (Principal)",
+      "paso_origen": 3,
+      "generador": "reportlab",
+      "campos": ["numero_prcc", "expediente", "funcionario", "cargo", "organo", "dispositivo", "hash_sha256", "hash_md5", "embalaje", "precinto", "nombre_firmante"]
+    },
+    {
+      "id": "prcc_derivada",
+      "titulo": "Planilla de Registro de Cadena de Custodia (Evidencia Derivada)",
+      "paso_origen": 6,
+      "generador": "reportlab",
+      "campos": ["numero_prcc_derivada", "prcc_origen", "archivo", "hash_sha256", "fechas_metadata", "relevancia"]
+    },
+    {
+      "id": "acta_derivacion",
+      "titulo": "Acta de Obtención por Derivación",
+      "paso_origen": 6,
+      "generador": "reportlab"
+    },
+    {
+      "id": "dictamen_pericial",
+      "titulo": "Dictamen Pericial",
+      "paso_origen": 8,
+      "generador": "reportlab",
+      "secciones": ["motivo", "descripcion", "examenes", "resultados", "conclusiones", "consumo"],
+      "requiere_firma_y_sello": true
+    },
+    {
+      "id": "acta_disposicion_final",
+      "titulo": "Acta de Disposición Final de Evidencias",
+      "paso_origen": 9,
+      "generador": "reportlab"
+    }
+  ],
+
+  "configuracion_app": {
+    "archivo": "~/.config/forense-android/config.ini",
+    "parametros": [
+      {"clave": "andriller_path", "default": "/usr/bin/andriller"},
+      {"clave": "aleapp_path", "default": "/usr/bin/aleapp"},
+      {"clave": "directorio_casos", "default": "~/forense-casos"},
+      {"clave": "timezone_local", "default": "America/Caracas"},
+      {"clave": "organo_default", "default": ""},
+      {"clave": "logo_path", "default": "/usr/share/forense-android/assets/logo.png"}
+    ]
+  },
+
+  "reglas_negocio": [
+    "El flujo de pasos es estrictamente lineal. El paso N+1 solo se habilita cuando el paso N está completado y guardado en SQLite.",
+    "Los hashes SHA-256 deben mostrarse completos (64 caracteres). Si origen ≠ copia, mostrar alerta roja y bloquear el avance al siguiente paso hasta documentar la discrepancia.",
+    "Toda operación que acceda a Andriller o ALEAPP debe ejecutarse via QProcess para no bloquear el hilo principal de Qt.",
+    "Todos los timestamps se almacenan en UTC en SQLite y se muestran en UTC-4 (América/Caracas) en la interfaz.",
+    "El campo IMEI debe validarse con el algoritmo de Luhn (15 dígitos).",
+    "El log de trazabilidad es inmutable: solo INSERT, nunca UPDATE ni DELETE. Cada registro incluye el hash del registro anterior.",
+    "Las conclusiones del dictamen pericial NO deben contener precalificaciones jurídicas. Mostrar advertencia en la UI.",
+    "La aplicación debe poder gestionar múltiples casos simultáneamente con un selector de caso activo.",
+    "Las rutas de Andriller, ALEAPP y directorio de casos son configurables y no deben estar hardcodeadas.",
+    "Todo formulario legal debe tener botón de impresión que genere PDF con reportlab y abra QPrintDialog."
+  ],
+
+  "empaquetado_deb": {
+    "nombre_paquete": "forense-android",
+    "version": "1.0.0",
+    "arquitectura": "amd64",
+    "dependencias_sistema": ["python3 (>= 3.11)", "python3-pyqt6", "python3-reportlab"],
+    "recomendados": ["andriller", "aleapp"],
+    "directorio_instalacion": "/usr/share/forense-android",
+    "ejecutable": "/usr/bin/forense-android",
+    "desktop_entry": "/usr/share/applications/forense-android.desktop",
+    "datos_usuario": "/var/lib/forense-android",
+    "script_build": "packaging/build_deb.sh",
+    "scripts_debian": ["postinst", "prerm"]
+  },
+
+  "estructura_directorios": {
+    "raiz": "forense_android/",
+    "modulos": [
+      "main.py",
+      "database/db_manager.py",
+      "database/schema.sql",
+      "ui/main_window.py",
+      "ui/sidebar.py",
+      "ui/pages/home_page.py",
+      "ui/pages/fase1/aislamiento_page.py",
+      "ui/pages/fase1/adquisicion_page.py",
+      "ui/pages/fase1/prcc_page.py",
+      "ui/pages/fase2/recepcion_page.py",
+      "ui/pages/fase2/aleapp_page.py",
+      "ui/pages/fase2/derivacion_page.py",
+      "ui/pages/fase3/fundamentacion_page.py",
+      "ui/pages/fase3/dictamen_page.py",
+      "ui/pages/fase3/cierre_page.py",
+      "ui/widgets/hash_widget.py",
+      "ui/widgets/log_viewer.py",
+      "ui/widgets/status_badge.py",
+      "services/hash_service.py",
+      "services/andriller_service.py",
+      "services/aleapp_service.py",
+      "services/print_service.py",
+      "services/audit_service.py",
+      "models/caso.py",
+      "models/dispositivo.py",
+      "models/prcc.py",
+      "models/dictamen.py",
+      "assets/style.qss",
+      "assets/logo.png",
+      "packaging/DEBIAN/control",
+      "packaging/DEBIAN/postinst",
+      "packaging/DEBIAN/prerm",
+      "packaging/build_deb.sh",
+      "requirements.txt",
+      "setup.py"
+    ]
+  },
+
+  "orden_construccion": [
+    "1. schema.sql + db_manager.py — base de datos y migraciones",
+    "2. models/ — dataclasses puras sin dependencias",
+    "3. services/hash_service.py — cálculo hashes con progress callback",
+    "4. ui/main_window.py + ui/sidebar.py — estructura navegación vacía funcional",
+    "5. assets/style.qss — tema oscuro completo",
+    "6. ui/pages/fase1/ — aislamiento → adquisicion → prcc",
+    "7. services/andriller_service.py (QProcess wrapper)",
+    "8. ui/pages/fase2/recepcion_page.py + aleapp_page.py",
+    "9. services/aleapp_service.py (QProcess wrapper)",
+    "10. ui/pages/fase2/derivacion_page.py",
+    "11. ui/pages/fase3/ — fundamentacion → dictamen → cierre",
+    "12. services/print_service.py — reportlab + QPrintDialog",
+    "13. services/audit_service.py — log trazabilidad encadenado",
+    "14. ui/pages/trazabilidad_page.py — visor audit log",
+    "15. packaging/ + build_deb.sh — empaquetado .deb"
+  ],
+
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Construye la aplicación completa de gestión forense Android con PyQt6 según el SKILL.md",
+      "expected_output": "Proyecto Python completo con todos los módulos, formularios, integración con Andriller/ALEAPP, SQLite, impresión PDF y packaging .deb",
+      "files": ["SKILL.md", "skill.json"]
+    },
+    {
+      "id": 2,
+      "prompt": "Agrega un módulo de reportes que exporte el caso completo en PDF con todas las PRCC adjuntas",
+      "expected_output": "Módulo report_service.py + página de reportes integrada al sidebar",
+      "files": ["SKILL.md"]
+    },
+    {
+      "id": 3,
+      "prompt": "Implementa la verificación de hash con barra de progreso para imágenes forenses grandes (>10GB)",
+      "expected_output": "hash_service.py con QThread + señales de progreso, widget hash_widget.py con QProgressBar",
+      "files": ["SKILL.md"]
+    }
+  ]
+}

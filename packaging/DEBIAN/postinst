@@ -1,0 +1,5 @@
+#!/bin/bash
+# Crear directorio de datos de usuario
+mkdir -p /var/lib/forense-android/casos
+chmod 700 /var/lib/forense-android
+echo "Sistema Forense Android instalado correctamente."
