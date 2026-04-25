@@ -49,7 +49,7 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
-### Opción 3: Paquete .deb
+### Opción 3: Paquete .deb (Recomendado para Ubuntu)
 
 ```bash
 # Construir paquete .deb
@@ -57,10 +57,29 @@ chmod +x packaging/build_deb.sh
 ./packaging/build_deb.sh
 
 # Instalar paquete generado
-sudo dpkg -i dist/solicitud-por-consignacion_1.0.0_amd64.deb
+sudo dpkg -i dist/sistema-forense-android_1.0.0_amd64.deb
+
+# Instalar dependencias automáticamente (si faltan)
+sudo apt-get install -f
 ```
 
+El paquete .deb incluye:
+- Todos los archivos de la aplicación en `/usr/share/sistema-forense-android/`
+- Ejecutable en `/usr/bin/sistema-forense-android`
+- Entrada en el menú de aplicaciones
+- Scripts de instalación y desinstalación
+
 ## Uso
+
+### Desde el menú de aplicaciones (si se instaló con .deb):
+
+Busque "Sistema Forense Android" en el menú de aplicaciones de Ubuntu.
+
+### Desde la terminal (si se instaló con .deb):
+
+```bash
+sistema-forense-android
+```
 
 ### Con entorno virtual activado:
 
