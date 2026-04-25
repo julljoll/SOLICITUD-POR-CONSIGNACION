@@ -1,0 +1,15 @@
+#!/bin/bash
+set -e
+echo "✅ Sistema Forense Android instalado correctamente."
+echo ""
+echo "Las dependencias necesarias son:"
+echo "  - python3-pyqt6"
+echo "  - python3-reportlab"
+echo "  - python3-pil"
+echo ""
+echo "Si no están instaladas, ejecute:"
+echo "  sudo apt install python3-pyqt6 python3-reportlab python3-pil"
+echo ""
+echo "Puede ejecutarlo desde el menú de aplicaciones o con el comando:"
+echo "  sistema-forense-android"
+exit 0

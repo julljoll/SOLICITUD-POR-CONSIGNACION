@@ -1,0 +1,61 @@
+/* style.qss */
+QMainWindow {
+    background-color: #1a1d23;
+}
+QWidget#sidebar {
+    background-color: #13161b;
+    border-right: 2px solid #2d3748;
+    min-width: 220px;
+    max-width: 260px;
+}
+QListWidget {
+    background: transparent;
+    border: none;
+    color: #a0aec0;
+    font-size: 13px;
+}
+QListWidget::item:selected {
+    background-color: #2b6cb0;
+    color: #ffffff;
+    border-radius: 6px;
+}
+QListWidget::item:hover {
+    background-color: #2d3748;
+    border-radius: 6px;
+}
+QPushButton#btnPrimary {
+    background-color: #2b6cb0;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 20px;
+    font-size: 13px;
+    font-weight: bold;
+}
+QPushButton#btnPrimary:hover { background-color: #3182ce; }
+QPushButton#btnDanger {
+    background-color: #c53030;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 20px;
+}
+QLineEdit, QTextEdit, QComboBox {
+    background-color: #2d3748;
+    border: 1px solid #4a5568;
+    border-radius: 4px;
+    color: #e2e8f0;
+    padding: 6px;
+}
+QLabel#sectionTitle {
+    color: #90cdf4;
+    font-size: 16px;
+    font-weight: bold;
+}
+QLabel#phaseHeader {
+    color: #68d391;
+    font-size: 11px;
+    font-weight: bold;
+    text-transform: uppercase;
+    padding: 8px 4px 4px 4px;
+}
